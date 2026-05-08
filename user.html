@@ -274,38 +274,55 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:0 2rem
 </div>
 
 <script>
-const GAS_DEF = 'https://script.google.com/macros/s/AKfycbz7W34A80P0LNl0D2qZuMYd9tXYbiuT5u3uq9baDL0-4qK6QOL5gko-Kyyhuij_svZ3/exec';
-
+const GAS_DEF = 'https://script.google.com/macros/s/AKfycbwCw_Aw1LM3Xzhlfmv3u2PPI1-qF32OF1e1CFjtMUfWGwgJbB4XmZ5txN5m2mY-2AIH/exec';
 const gasUrl = () => localStorage.getItem('GAS_URL') || GAS_DEF;
 
 let wilData = {};
 let jenisData = [];
 let klasifikasiData = [];
+let klasifikasiCache = []; // semua klasifikasi, cache saat init
 let lastNoSurat = '';
 
 // ── Init ──────────────────────────────────────────────────────
 async function init() {
   try {
-    const [rWil, rJa] = await Promise.all([
+    const [rWil, rJa, rKl] = await Promise.all([
       fetch(gasUrl(),{method:'POST',body:JSON.stringify({action:'getKodeWilayah'})}).then(r=>r.json()),
       fetch(gasUrl(),{method:'POST',body:JSON.stringify({action:'getJenisArsip'})}).then(r=>r.json()),
+      fetch(gasUrl(),{method:'POST',body:JSON.stringify({action:'getKlasifikasi'})}).then(r=>r.json()),
     ]);
     if (rWil.success) wilData = rWil.data;
-    if (rJa.success) {
+
+    // Simpan semua klasifikasi di cache
+    if (rKl.success) klasifikasiCache = rKl.data;
+
+    if (rJa.success && rJa.data.length > 0) {
       jenisData = rJa.data;
-      const sel = document.getElementById('selJenis');
-      jenisData.forEach(j => {
-        const o = document.createElement('option');
-        o.value = j.id;
-        o.dataset.kode = j.kode;
-        o.dataset.nama = j.nama;
-        o.textContent = `${j.kode} — ${j.nama}`;
-        sel.appendChild(o);
+    } else if (rKl.success) {
+      // Fallback: derive jenis arsip dari nama unik di data klasifikasi
+      // Kolom "nama" di Klasifikasi = nama jenis (misal "Program dan Anggaran")
+      const seen = {};
+      rKl.data.forEach(k => {
+        const prefix = k.jenisArsipId || (k.kode||'').replace(/[^A-Za-z]/g,'').toUpperCase().slice(0,2);
+        if (!seen[prefix]) {
+          seen[prefix] = {id: prefix, kode: prefix, nama: k.nama || prefix};
+        }
       });
-      document.getElementById('jaLoadWrap').style.display = 'none';
-      sel.style.display = '';
-      document.getElementById('jaHint').textContent = `${jenisData.length} jenis arsip tersedia`;
+      jenisData = Object.values(seen);
     }
+
+    const sel = document.getElementById('selJenis');
+    jenisData.forEach(j => {
+      const o = document.createElement('option');
+      o.value = j.id;
+      o.dataset.kode = j.kode;
+      o.dataset.nama = j.nama;
+      o.textContent = j.nama || j.kode;
+      sel.appendChild(o);
+    });
+    document.getElementById('jaLoadWrap').style.display = 'none';
+    sel.style.display = '';
+    document.getElementById('jaHint').textContent = `${jenisData.length} jenis arsip tersedia`;
     updatePreview();
   } catch(e) {
     showErr('Gagal memuat data. Periksa koneksi atau URL GAS.');
@@ -324,31 +341,36 @@ async function onJenisChange() {
   klasifikasiData = [];
   if (!sel.value) { updatePreview(); return; }
 
-  klWrap.style.display = '';
-  selKl.style.display = 'none';
-  updatePreview();
-  try {
-    const r = await fetch(gasUrl(),{method:'POST',body:JSON.stringify({action:'getKlasifikasi',jenisArsipId:sel.value})}).then(r=>r.json());
-    if (r.success) {
-      klasifikasiData = r.data;
-      r.data.forEach(k => {
-        const o = document.createElement('option');
-        o.value = k.id;
-        o.dataset.kode = k.kode;
-        o.dataset.ket = k.keterangan;
-        o.textContent = `${k.kode} — ${k.keterangan}`;
-        selKl.appendChild(o);
-      });
-      document.getElementById('klHint').textContent = `${r.data.length} klasifikasi tersedia`;
-      klWrap.style.display = 'none';
-      selKl.style.display = '';
-      selKl.disabled = false;
+  // Gunakan cache dulu, kalau kosong baru fetch
+  let filtered = klasifikasiCache.filter(k => k.jenisArsipId === sel.value);
+
+  if (filtered.length === 0) {
+    // Fetch dari GAS
+    klWrap.style.display = '';
+    selKl.style.display = 'none';
+    updatePreview();
+    try {
+      const r = await fetch(gasUrl(),{method:'POST',body:JSON.stringify({action:'getKlasifikasi',jenisArsipId:sel.value})}).then(r=>r.json());
+      if (r.success) filtered = r.data;
+    } catch(e) {
+      showErr('Gagal memuat klasifikasi.');
     }
-  } catch(e) {
-    showErr('Gagal memuat klasifikasi.');
     klWrap.style.display = 'none';
     selKl.style.display = '';
   }
+
+  klasifikasiData = filtered;
+  filtered.forEach(k => {
+    const o = document.createElement('option');
+    o.value = k.id;
+    o.dataset.kode = k.kode;
+    o.dataset.ket  = k.keterangan;
+    // Tampilkan: PR.01 — PERENCANAAN – Rencana Strategis ...
+    o.textContent = `${k.kode}  —  ${k.keterangan || k.nama || ''}`;
+    selKl.appendChild(o);
+  });
+  document.getElementById('klHint').textContent = `${filtered.length} klasifikasi tersedia`;
+  selKl.disabled = false;
   updatePreview();
   checkReady();
 }
@@ -373,24 +395,23 @@ function onKlasifikasiChange() {
 function updatePreview() {
   const selJa = document.getElementById('selJenis');
   const selKl = document.getElementById('selKlasifikasi');
-  const prefix = wilData.prefixWil || 'WP.XX.XXX';
-  const kodeWil = wilData.kodeWil || 'X';
-  const jaOpt = selJa.value ? selJa.options[selJa.selectedIndex] : null;
+  const prefix  = wilData.prefixWil || 'WP.XX.XXX';
+  const kodeWil = wilData.kodeWil   || 'X';
   const klOpt = selKl.value ? selKl.options[selKl.selectedIndex] : null;
-  const jaKode = jaOpt ? jaOpt.dataset.kode : 'XX';
   const klKode = klOpt ? klOpt.dataset.kode : 'XX.XX';
+  const jaNama = selJa.value ? (selJa.options[selJa.selectedIndex].dataset.nama || selJa.value) : 'JENIS';
 
   const display = document.getElementById('noPreview');
-  const parts   = [
-    {id:'pPrefix', label:prefix, filled:!!wilData.prefixWil},
-    {id:'pWil',    label:kodeWil, filled:!!wilData.kodeWil},
-    {id:'pJenis',  label:jaKode,  filled:!!selJa.value},
-    {id:'pKl',     label:klKode,  filled:!!selKl.value},
-    {id:'pNo',     label:'N',     filled:false},
+  const parts = [
+    {id:'pPrefix', label:prefix,   filled:!!wilData.prefixWil},
+    {id:'pWil',    label:kodeWil,  filled:!!wilData.kodeWil},
+    {id:'pJenis',  label:jaNama,   filled:!!selJa.value},
+    {id:'pKl',     label:klKode,   filled:!!selKl.value},
+    {id:'pNo',     label:'N',      filled:false},
   ];
 
   if (selJa.value && selKl.value) {
-    display.textContent = `${prefix}.${kodeWil}.${jaKode}.${klKode}-N`;
+    display.textContent = `${prefix}.${kodeWil}.${klKode}-N`;
     display.className = 'no-surat-display';
   } else {
     display.textContent = 'Pilih jenis arsip dan klasifikasi...';
