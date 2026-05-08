@@ -242,7 +242,7 @@ tr:hover td{background:var(--glass)}
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>No Surat</th><th>Perihal</th><th>Pengirim</th><th>Tgl Input</th></tr></thead>
+            <thead><tr><th>No</th><th>No Surat</th><th>Perihal</th><th>Alamat Penerima</th><th>Tgl Surat</th></tr></thead>
             <tbody id="dashSuratTbl"><tr class="empty-row"><td colspan="4">Memuat data...</td></tr></tbody>
           </table>
         </div>
@@ -315,7 +315,7 @@ tr:hover td{background:var(--glass)}
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>No Surat</th><th>Klasifikasi</th><th>Perihal</th><th>Alamat Penerima</th><th>Tgl Surat</th><th>Tgl Input</th><th>Aksi</th></tr></thead>
+            <thead><tr><th>No</th><th>No Surat</th><th>Perihal</th><th>Alamat Penerima</th><th>Tgl Surat</th><th>Aksi</th></tr></thead>
             <tbody id="suratTbl"><tr class="empty-row"><td colspan="7">Memuat data...</td></tr></tbody>
           </table>
         </div>
@@ -750,13 +750,12 @@ function renderSuratTable() {
   if (!data.length) { tbody.innerHTML = '<tr class="empty-row"><td colspan="7">Tidak ada data surat</td></tr>'; return; }
   tbody.innerHTML = data.map(s => `
     <tr>
-      <td><span style="font-family:var(--mono);font-size:.78rem;color:var(--accent);font-weight:700">${esc(s.noSurat)}</span></td>
-      <td style="font-size:.75rem;color:var(--text-muted)">${esc(s.namaKlasifikasi||'')}</td>
+      <td style="font-family:var(--mono);font-size:.75rem;color:var(--text-muted)">${esc(String(s.no||''))}</td>
+      <td><span style="font-family:var(--mono);font-size:.75rem;color:var(--accent);font-weight:700">${esc(s.noSurat)}</span></td>
       <td>${esc(s.perihal||'')}</td>
-      <td style="font-size:.78rem">${esc(s.alamat||'')}</td>
-      <td style="font-size:.75rem;font-family:var(--mono)">${esc(String(s.tglSurat||'').slice(0,10))}</td>
-      <td style="font-size:.73rem;font-family:var(--mono);color:var(--text-muted)">${esc(String(s.tglInput||'').slice(0,10))}</td>
-      <td><button class="btn-sm danger" onclick="deleteSurat('${s.rowIndex}','${esc(s.sheetName)}','${esc(s.noSurat)}')">Hapus</button></td>
+      <td style="font-size:.78rem;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(s.alamat||'')}">${esc(s.alamat||'')}</td>
+      <td style="font-size:.75rem;font-family:var(--mono)">${esc(String(s.tglSurat||''))}</td>
+      <td><button class="btn-sm danger" onclick="deleteSurat(${s.rowIndex},'${esc(s.sheetName)}','${esc(s.noSurat)}')">Hapus</button></td>
     </tr>`).join('');
 }
 
@@ -854,10 +853,11 @@ function renderDashboard() {
   if (!recent.length) { tb.innerHTML = '<tr class="empty-row"><td colspan="4">Belum ada surat</td></tr>'; return; }
   tb.innerHTML = recent.map(s => `
     <tr>
-      <td><span style="font-family:var(--mono);font-size:.78rem;color:var(--accent);font-weight:700">${esc(s.noSurat)}</span></td>
+      <td style="font-family:var(--mono);font-size:.75rem;color:var(--text-muted)">${esc(String(s.no||''))}</td>
+      <td><span style="font-family:var(--mono);font-size:.75rem;color:var(--accent);font-weight:700">${esc(s.noSurat)}</span></td>
       <td>${esc(s.perihal||'')}</td>
-      <td>${esc(s.alamat||'')}</td>
-      <td style="font-size:.73rem;font-family:var(--mono);color:var(--text-muted)">${esc(String(s.tglInput||'').slice(0,10))}</td>
+      <td style="font-size:.78rem">${esc(s.alamat||'')}</td>
+      <td style="font-size:.73rem;font-family:var(--mono);color:var(--text-muted)">${esc(String(s.tglSurat||''))}</td>
     </tr>`).join('');
 }
 

@@ -390,45 +390,47 @@ function checkReady() {
 
 // ── Submit ────────────────────────────────────────────────────
 async function doSubmit() {
-  const jenisArsipId  = document.getElementById('selJenis').value;
-  const klasifikasiId = document.getElementById('selKl').value;
-  const alamat        = document.getElementById('alamat').value.trim();
-  const tglSurat      = document.getElementById('tglSurat').value;
-  const perihal       = document.getElementById('perihal').value.trim();
+  const selKl    = document.getElementById('selKl');
+  const alamat   = document.getElementById('alamat').value.trim();
+  const tglSurat = document.getElementById('tglSurat').value;
+  const perihal  = document.getElementById('perihal').value.trim();
 
   hideErr();
-  if (!alamat)   { showErr('Alamat penerima wajib diisi.'); return; }
-  if (!tglSurat) { showErr('Tanggal surat wajib diisi.'); return; }
-  if (!perihal)  { showErr('Perihal wajib diisi.'); return; }
+  if (!selKl.value)  { showErr('Pilih klasifikasi terlebih dahulu.'); return; }
+  if (!alamat)       { showErr('Alamat penerima wajib diisi.'); return; }
+  if (!tglSurat)     { showErr('Tanggal surat wajib diisi.'); return; }
+  if (!perihal)      { showErr('Perihal wajib diisi.'); return; }
+
+  // Ambil kode & keterangan langsung dari option yang dipilih
+  const klOpt           = selKl.options[selKl.selectedIndex];
+  const kodeKlasifikasi = klOpt.dataset.kode;  // e.g. "UM.01.01"
+  const keterangan      = klOpt.dataset.ket;   // e.g. "UMUM – Persuratan"
+
+  if (!kodeKlasifikasi) { showErr('Kode klasifikasi tidak valid.'); return; }
 
   setBusy(true);
   try {
-    // Format tanggal ke DD/MM/YYYY (sesuai format di sheet existing)
-    const [y,m,d] = tglSurat.split('-');
-    const tglFormatted = `${d}/${m}/${y}`;
+    const [y,m,d]  = tglSurat.split('-');
+    const tglFormatted = d+'/'+m+'/'+y;
 
     const r = await post({
       action: 'submitSurat',
-      jenisArsipId,
-      klasifikasiId,
+      kodeKlasifikasi,
+      keterangan,
       alamat,
       perihal,
       tglSurat: tglFormatted,
-      userEmail: '',
-      userNama:  '',
     });
 
     if (r.success) {
       lastNoSurat = r.noSurat;
-      // Tampilkan modal
       document.getElementById('modalNo').textContent = r.noSurat;
       document.getElementById('copyHint').textContent = '// klik untuk menyalin';
-      const klOpt = document.getElementById('selKl').options[document.getElementById('selKl').selectedIndex];
       document.getElementById('modalDetail').innerHTML =
-        `<b>Klasifikasi:</b> ${klOpt.dataset.kode} — ${klOpt.dataset.ket}<br>` +
-        `<b>Alamat:</b> ${alamat}<br>` +
-        `<b>Tanggal:</b> ${tglFormatted}<br>` +
-        `<b>Perihal:</b> ${perihal}`;
+        '<b>Klasifikasi:</b> '+kodeKlasifikasi+' — '+keterangan+'<br>'+
+        '<b>Alamat:</b> '+alamat+'<br>'+
+        '<b>Tanggal:</b> '+tglFormatted+'<br>'+
+        '<b>Perihal:</b> '+perihal;
       document.getElementById('modalBg').classList.add('show');
       document.getElementById('s2').className = 'step done';
       document.getElementById('s3').className = 'step active';
@@ -436,7 +438,7 @@ async function doSubmit() {
       showErr(r.message || 'Gagal menyimpan. Coba lagi.');
     }
   } catch(e) {
-    showErr('Gagal terhubung ke server.');
+    showErr('Gagal terhubung ke server. Periksa koneksi.');
   }
   setBusy(false);
 }
