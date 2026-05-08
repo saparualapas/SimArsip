@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Input Surat — SIMARSIP</title>
+<style>
+:root{
+  --primary:#1a3a5c;--primary-light:#234d7a;
+  --accent:#e8a020;--accent-light:#f5c04a;
+  --surface:#0d2035;--bg:#081624;--text:#e8f0f8;--text-muted:#7a9bb8;
+  --border:rgba(255,255,255,0.08);--glass:rgba(255,255,255,0.04);
+  --ok:#2dd4a0;--err:#ef4444;
+  --mono:'JetBrains Mono',monospace;--sans:'Sora',sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh}
+.bg-grid{position:fixed;inset:0;z-index:0;background-image:linear-gradient(rgba(26,58,92,.2) 1px,transparent 1px),linear-gradient(90deg,rgba(26,58,92,.2) 1px,transparent 1px);background-size:48px 48px;mask-image:radial-gradient(ellipse 100% 100% at 50% 0%,black 40%,transparent 100%);pointer-events:none}
+.glow-orb{position:fixed;border-radius:50%;filter:blur(100px);z-index:0;pointer-events:none}
+.g1{width:500px;height:500px;background:rgba(26,58,92,.45);top:-150px;left:-100px}
+.g2{width:350px;height:350px;background:rgba(232,160,32,.1);bottom:-80px;right:-50px}
+
+/* NAV */
+nav{display:flex;align-items:center;justify-content:space-between;padding:0 2rem;height:64px;background:rgba(13,32,53,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+.nav-logo{display:flex;align-items:center;gap:10px}
+.logo-icon{width:38px;height:38px;border-radius:10px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;color:var(--bg)}
+.logo-name{font-size:16px;font-weight:700}
+.logo-ver{font-size:10px;color:var(--text-muted);font-family:var(--mono)}
+.nav-links{display:flex;gap:6px}
+.nav-btn{padding:7px 16px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-muted);font-family:var(--sans);font-size:.82rem;cursor:pointer;text-decoration:none;transition:all .2s}
+.nav-btn:hover,.nav-btn.active{background:var(--glass);color:var(--text);border-color:rgba(255,255,255,.15)}
+.nav-btn.cta{background:var(--accent);color:var(--bg);border-color:var(--accent);font-weight:600}
+.nav-btn.cta:hover{background:var(--accent-light)}
+
+/* MAIN */
+.main{position:relative;z-index:1;max-width:820px;margin:0 auto;padding:2.5rem 1.5rem 4rem}
+.page-header{margin-bottom:2rem}
+.page-label{font-size:11px;font-family:var(--mono);color:var(--accent);letter-spacing:2px;text-transform:uppercase;margin-bottom:.5rem}
+.page-title{font-size:1.8rem;font-weight:800;letter-spacing:-.5px}
+.page-sub{font-size:.85rem;color:var(--text-muted);margin-top:.4rem}
+
+/* CARD */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:1.8rem;margin-bottom:1.2rem;animation:fadeUp .4s ease both}
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.card-title{font-size:.78rem;font-weight:700;color:var(--text-muted);letter-spacing:1.5px;text-transform:uppercase;font-family:var(--mono);margin-bottom:1.2rem;display:flex;align-items:center;gap:8px}
+.card-title::before{content:'';display:block;width:3px;height:14px;background:var(--accent);border-radius:2px}
+
+/* STEPS */
+.steps{display:flex;gap:0;margin-bottom:1.8rem;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--glass)}
+.step{flex:1;padding:12px 16px;text-align:center;font-size:.75rem;color:var(--text-muted);font-family:var(--mono);transition:all .25s;position:relative;cursor:default}
+.step.done{color:var(--ok)}
+.step.active{background:rgba(232,160,32,.1);color:var(--accent);font-weight:600}
+.step-num{font-size:1rem;display:block;margin-bottom:2px}
+
+/* FORM */
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem}
+.form-row.full{grid-template-columns:1fr}
+.form-group{display:flex;flex-direction:column}
+.form-label{font-size:.75rem;font-weight:600;color:var(--text-muted);letter-spacing:.8px;text-transform:uppercase;margin-bottom:7px}
+.form-label .req{color:var(--accent)}
+.form-input,.form-select{
+  padding:11px 14px;background:var(--glass);border:1px solid var(--border);
+  border-radius:10px;color:var(--text);font-family:var(--sans);font-size:.9rem;
+  transition:border-color .2s,box-shadow .2s;outline:none;width:100%;
+}
+.form-input:focus,.form-select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(232,160,32,.12)}
+.form-input::placeholder{color:var(--text-muted)}
+.form-select{cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%237a9bb8' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14L2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:36px}
+.form-select:disabled{opacity:.5;cursor:not-allowed}
+.form-select option{background:var(--surface);color:var(--text)}
+.hint{font-size:.72rem;color:var(--text-muted);margin-top:5px;font-family:var(--mono)}
+
+/* PREVIEW KLASIFIKASI */
+.kl-preview{
+  display:none;padding:10px 14px;background:rgba(232,160,32,.07);
+  border:1px solid rgba(232,160,32,.2);border-radius:8px;margin-top:8px;
+  font-size:.8rem;line-height:1.5;
+}
+.kl-preview.show{display:block}
+.kl-preview b{color:var(--accent);font-family:var(--mono)}
+
+/* PREVIEW NOMOR */
+.no-preview{
+  background:rgba(13,32,53,1);border:1px dashed rgba(232,160,32,.35);
+  border-radius:12px;padding:1.5rem;text-align:center;
+}
+.no-preview-label{font-size:.7rem;color:var(--text-muted);font-family:var(--mono);letter-spacing:1px;margin-bottom:.8rem}
+.no-surat-display{
+  font-size:1.5rem;font-weight:800;font-family:var(--mono);
+  color:var(--accent);letter-spacing:.5px;word-break:break-all;
+  min-height:36px;
+}
+.no-surat-display.placeholder{color:var(--border);font-size:1.1rem;font-weight:400}
+.no-parts{display:flex;gap:4px;justify-content:center;flex-wrap:wrap;margin-top:10px}
+.no-part{font-size:.65rem;font-family:var(--mono);padding:3px 8px;border-radius:4px;background:var(--glass);color:var(--text-muted)}
+.no-part.filled{background:rgba(232,160,32,.12);color:var(--accent)}
+
+/* BUTTONS */
+.btn-submit{
+  width:100%;padding:14px;background:var(--accent);color:var(--bg);
+  border:none;border-radius:10px;font-family:var(--sans);font-size:.95rem;
+  font-weight:700;cursor:pointer;transition:all .2s;display:flex;
+  align-items:center;justify-content:center;gap:8px;margin-top:.5rem;
+}
+.btn-submit:hover:not(:disabled){background:var(--accent-light);transform:translateY(-1px);box-shadow:0 10px 24px rgba(232,160,32,.3)}
+.btn-submit:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.spin{width:16px;height:16px;border:2px solid rgba(0,0,0,.2);border-top-color:var(--bg);border-radius:50%;animation:spin .5s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* RESULT MODAL */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:200;display:flex;align-items:center;justify-content:center;padding:1rem;opacity:0;pointer-events:none;transition:opacity .25s}
+.modal-bg.show{opacity:1;pointer-events:auto}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:2.5rem;max-width:480px;width:100%;text-align:center;transform:translateY(16px);transition:transform .25s;box-shadow:0 40px 80px rgba(0,0,0,.6)}
+.modal-bg.show .modal{transform:translateY(0)}
+.modal-icon{font-size:3rem;margin-bottom:1rem}
+.modal-title{font-size:1.3rem;font-weight:700;margin-bottom:.5rem}
+.modal-sub{font-size:.85rem;color:var(--text-muted);margin-bottom:1.5rem}
+.modal-no{
+  background:var(--bg);border:1px solid rgba(232,160,32,.3);border-radius:10px;
+  padding:1rem;font-family:var(--mono);font-size:1.1rem;font-weight:700;
+  color:var(--accent);letter-spacing:.3px;word-break:break-all;margin-bottom:1.5rem;
+  cursor:pointer;transition:background .2s;
+}
+.modal-no:hover{background:rgba(232,160,32,.06)}
+.modal-copy-hint{font-size:.72rem;color:var(--text-muted);font-family:var(--mono);margin-top:6px}
+.modal-actions{display:flex;gap:10px}
+.btn-again{flex:1;padding:11px;background:var(--glass);border:1px solid var(--border);color:var(--text);border-radius:9px;font-family:var(--sans);font-size:.88rem;cursor:pointer;transition:all .2s}
+.btn-again:hover{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2)}
+.btn-done{flex:1;padding:11px;background:var(--accent);border:none;color:var(--bg);border-radius:9px;font-family:var(--sans);font-size:.88rem;font-weight:700;cursor:pointer;transition:all .2s}
+.btn-done:hover{background:var(--accent-light)}
+
+/* LOADING SKELETON */
+.skel{background:linear-gradient(90deg,var(--glass) 25%,rgba(255,255,255,.06) 50%,var(--glass) 75%);background-size:200% 100%;animation:skel 1.4s ease infinite;border-radius:6px;height:42px}
+@keyframes skel{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+/* ALERT */
+.alert{padding:10px 14px;border-radius:8px;font-size:.82rem;margin-bottom:1rem;display:none}
+.alert.err{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);color:#f87171}
+.alert.show{display:block}
+
+@media(max-width:600px){
+  .form-row{grid-template-columns:1fr}
+  nav{padding:0 1rem}
+  .no-surat-display{font-size:1.1rem}
+}
+</style>
+</head>
+<body>
+<div class="bg-grid"></div>
+<div class="glow-orb g1"></div>
+<div class="glow-orb g2"></div>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">
+    <div class="logo-icon">S</div>
+    <div>
+      <div class="logo-name">SIMARSIP</div>
+      <div class="logo-ver">v2.0 · 2026</div>
+    </div>
+  </div>
+  <div class="nav-links">
+    <a class="nav-btn" href="index.html">Beranda</a>
+    <a class="nav-btn active" href="user.html">Input Surat</a>
+    <a class="nav-btn cta" href="admin-login.html">Admin</a>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="page-header">
+    <div class="page-label">// Input Surat</div>
+    <div class="page-title">Buat Nomor Surat</div>
+    <div class="page-sub">Pilih jenis arsip dan klasifikasi untuk menghasilkan nomor surat otomatis.</div>
+  </div>
+
+  <!-- STEP INDICATOR -->
+  <div class="steps">
+    <div class="step active" id="s1"><span class="step-num">①</span>Jenis & Klasifikasi</div>
+    <div class="step" id="s2"><span class="step-num">②</span>Data Surat</div>
+    <div class="step" id="s3"><span class="step-num">③</span>Selesai</div>
+  </div>
+
+  <!-- ALERT -->
+  <div class="alert err" id="alertErr"></div>
+
+  <!-- CARD 1: JENIS & KLASIFIKASI -->
+  <div class="card" id="card1">
+    <div class="card-title">Klasifikasi Arsip</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Jenis Arsip <span class="req">*</span></label>
+        <div id="jaLoadWrap"><div class="skel"></div></div>
+        <select class="form-select" id="selJenis" style="display:none" onchange="onJenisChange()">
+          <option value="">— Pilih Jenis Arsip —</option>
+        </select>
+        <div class="hint" id="jaHint"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Klasifikasi <span class="req">*</span></label>
+        <div id="klLoadWrap" style="display:none"><div class="skel"></div></div>
+        <select class="form-select" id="selKlasifikasi" disabled onchange="onKlasifikasiChange()">
+          <option value="">— Pilih Klasifikasi —</option>
+        </select>
+        <div class="hint" id="klHint">Pilih jenis arsip terlebih dahulu</div>
+      </div>
+    </div>
+    <!-- Preview Klasifikasi -->
+    <div class="kl-preview" id="klPreview">
+      <b id="klPreviewKode"></b> — <span id="klPreviewKet"></span>
+    </div>
+  </div>
+
+  <!-- CARD 2: PREVIEW NOMOR + FORM -->
+  <div class="card" id="card2">
+    <div class="card-title">Preview Nomor Surat</div>
+    <div class="no-preview">
+      <div class="no-preview-label">// Nomor Surat akan Dihasilkan</div>
+      <div class="no-surat-display placeholder" id="noPreview">Pilih jenis arsip dan klasifikasi...</div>
+      <div class="no-parts" id="noParts">
+        <span class="no-part" id="pPrefix">PREFIX</span>
+        <span class="no-part" id="pWil">WILAYAH</span>
+        <span class="no-part" id="pJenis">JENIS</span>
+        <span class="no-part" id="pKl">KLASIFIKASI</span>
+        <span class="no-part" id="pNo">NOMOR</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- CARD 3: DATA SURAT -->
+  <div class="card" id="card3">
+    <div class="card-title">Data Surat</div>
+    <div class="form-row full">
+      <div class="form-group">
+        <label class="form-label">Perihal / Subjek Surat <span class="req">*</span></label>
+        <input class="form-input" type="text" id="perihal" placeholder="Contoh: Undangan Rapat Koordinasi..." oninput="updatePreview()">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Pengirim / Nama Pemohon <span class="req">*</span></label>
+        <input class="form-input" type="text" id="pengirim" placeholder="Nama instansi atau perorangan..." oninput="updatePreview()">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tanggal Surat <span class="req">*</span></label>
+        <input class="form-input" type="date" id="tglSurat">
+      </div>
+    </div>
+    <button class="btn-submit" id="btnSubmit" onclick="submitSurat()" disabled>
+      <span id="btnTxt">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        Generate & Simpan Nomor Surat
+      </span>
+      <span id="btnLoad" style="display:none;align-items:center;gap:6px"><div class="spin"></div>Memproses...</span>
+    </button>
+  </div>
+</div>
+
+<!-- MODAL HASIL -->
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <div class="modal-icon">✅</div>
+    <div class="modal-title">Nomor Surat Berhasil Dibuat!</div>
+    <div class="modal-sub">Klik nomor di bawah untuk menyalin</div>
+    <div class="modal-no" id="modalNo" onclick="copyNo()" title="Klik untuk salin">
+      <span id="modalNoTxt">—</span>
+    </div>
+    <div class="modal-copy-hint" id="copyHint">// klik untuk menyalin</div>
+    <div class="modal-actions">
+      <button class="btn-again" onclick="resetForm()">+ Input Surat Baru</button>
+      <button class="btn-done" onclick="closeModal()">Selesai</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const GAS_DEF = 'https://script.google.com/macros/s/AKfycbwCw_Aw1LM3Xzhlfmv3u2PPI1-qF32OF1e1CFjtMUfWGwgJbB4XmZ5txN5m2mY-2AIH/exec';
+const gasUrl = () => localStorage.getItem('GAS_URL') || GAS_DEF;
+
+let wilData = {};
+let jenisData = [];
+let klasifikasiData = [];
+let klasifikasiCache = []; // semua klasifikasi, cache saat init
+let lastNoSurat = '';
+
+// ── Init ──────────────────────────────────────────────────────
+async function init() {
+  try {
+    const [rWil, rJa, rKl] = await Promise.all([
+      fetch(gasUrl(),{method:'POST',body:JSON.stringify({action:'getKodeWilayah'})}).then(r=>r.json()),
+      fetch(gasUrl(),{method:'POST',body:JSON.stringify({action:'getJenisArsip'})}).then(r=>r.json()),
+      fetch(gasUrl(),{method:'POST',body:JSON.stringify({action:'getKlasifikasi'})}).then(r=>r.json()),
+    ]);
+    if (rWil.success) wilData = rWil.data;
+
+    // Simpan semua klasifikasi di cache
+    if (rKl.success) klasifikasiCache = rKl.data;
+
+    if (rJa.success && rJa.data.length > 0) {
+      jenisData = rJa.data;
+    } else if (rKl.success) {
+      // Fallback: derive jenis arsip dari nama unik di data klasifikasi
+      // Kolom "nama" di Klasifikasi = nama jenis (misal "Program dan Anggaran")
+      const seen = {};
+      rKl.data.forEach(k => {
+        const prefix = k.jenisArsipId || (k.kode||'').replace(/[^A-Za-z]/g,'').toUpperCase().slice(0,2);
+        if (!seen[prefix]) {
+          seen[prefix] = {id: prefix, kode: prefix, nama: k.nama || prefix};
+        }
+      });
+      jenisData = Object.values(seen);
+    }
+
+    const sel = document.getElementById('selJenis');
+    jenisData.forEach(j => {
+      const o = document.createElement('option');
+      o.value = j.id;
+      o.dataset.kode = j.kode;
+      o.dataset.nama = j.nama;
+      o.textContent = j.nama || j.kode;
+      sel.appendChild(o);
+    });
+    document.getElementById('jaLoadWrap').style.display = 'none';
+    sel.style.display = '';
+    document.getElementById('jaHint').textContent = `${jenisData.length} jenis arsip tersedia`;
+    updatePreview();
+  } catch(e) {
+    showErr('Gagal memuat data. Periksa koneksi atau URL GAS.');
+  }
+}
+
+// ── Jenis Arsip berubah ──────────────────────────────────────
+async function onJenisChange() {
+  const sel = document.getElementById('selJenis');
+  const selKl = document.getElementById('selKlasifikasi');
+  const klWrap = document.getElementById('klLoadWrap');
+  selKl.innerHTML = '<option value="">— Pilih Klasifikasi —</option>';
+  selKl.disabled = true;
+  document.getElementById('klPreview').classList.remove('show');
+  document.getElementById('klHint').textContent = '';
+  klasifikasiData = [];
+  if (!sel.value) { updatePreview(); return; }
+
+  // Gunakan cache dulu, kalau kosong baru fetch
+  let filtered = klasifikasiCache.filter(k => k.jenisArsipId === sel.value);
+
+  if (filtered.length === 0) {
+    // Fetch dari GAS
+    klWrap.style.display = '';
+    selKl.style.display = 'none';
+    updatePreview();
+    try {
+      const r = await fetch(gasUrl(),{method:'POST',body:JSON.stringify({action:'getKlasifikasi',jenisArsipId:sel.value})}).then(r=>r.json());
+      if (r.success) filtered = r.data;
+    } catch(e) {
+      showErr('Gagal memuat klasifikasi.');
+    }
+    klWrap.style.display = 'none';
+    selKl.style.display = '';
+  }
+
+  klasifikasiData = filtered;
+  filtered.forEach(k => {
+    const o = document.createElement('option');
+    o.value = k.id;
+    o.dataset.kode = k.kode;
+    o.dataset.ket  = k.keterangan;
+    // Tampilkan: PR.01 — PERENCANAAN – Rencana Strategis ...
+    o.textContent = `${k.kode}  —  ${k.keterangan || k.nama || ''}`;
+    selKl.appendChild(o);
+  });
+  document.getElementById('klHint').textContent = `${filtered.length} klasifikasi tersedia`;
+  selKl.disabled = false;
+  updatePreview();
+  checkReady();
+}
+
+// ── Klasifikasi berubah ───────────────────────────────────────
+function onKlasifikasiChange() {
+  const selKl = document.getElementById('selKlasifikasi');
+  const prev  = document.getElementById('klPreview');
+  if (selKl.value) {
+    const opt = selKl.options[selKl.selectedIndex];
+    document.getElementById('klPreviewKode').textContent = opt.dataset.kode;
+    document.getElementById('klPreviewKet').textContent  = opt.dataset.ket;
+    prev.classList.add('show');
+  } else {
+    prev.classList.remove('show');
+  }
+  updatePreview();
+  checkReady();
+}
+
+// ── Preview nomor ─────────────────────────────────────────────
+function updatePreview() {
+  const selJa = document.getElementById('selJenis');
+  const selKl = document.getElementById('selKlasifikasi');
+  const prefix  = wilData.prefixWil || 'WP.XX.XXX';
+  const kodeWil = wilData.kodeWil   || 'X';
+  const klOpt = selKl.value ? selKl.options[selKl.selectedIndex] : null;
+  const klKode = klOpt ? klOpt.dataset.kode : 'XX.XX';
+  const jaNama = selJa.value ? (selJa.options[selJa.selectedIndex].dataset.nama || selJa.value) : 'JENIS';
+
+  const display = document.getElementById('noPreview');
+  const parts = [
+    {id:'pPrefix', label:prefix,   filled:!!wilData.prefixWil},
+    {id:'pWil',    label:kodeWil,  filled:!!wilData.kodeWil},
+    {id:'pJenis',  label:jaNama,   filled:!!selJa.value},
+    {id:'pKl',     label:klKode,   filled:!!selKl.value},
+    {id:'pNo',     label:'N',      filled:false},
+  ];
+
+  if (selJa.value && selKl.value) {
+    display.textContent = `${prefix}.${kodeWil}.${klKode}-N`;
+    display.className = 'no-surat-display';
+  } else {
+    display.textContent = 'Pilih jenis arsip dan klasifikasi...';
+    display.className = 'no-surat-display placeholder';
+  }
+  parts.forEach(p => {
+    const el = document.getElementById(p.id);
+    el.textContent = p.label;
+    el.className = 'no-part' + (p.filled ? ' filled' : '');
+  });
+}
+
+// ── Check ready ───────────────────────────────────────────────
+function checkReady() {
+  const ok = document.getElementById('selJenis').value && document.getElementById('selKlasifikasi').value;
+  document.getElementById('btnSubmit').disabled = !ok;
+  // Step indicator
+  document.getElementById('s1').className = 'step ' + (ok ? 'done' : 'active');
+  document.getElementById('s2').className = 'step ' + (ok ? 'active' : '');
+}
+
+// ── Submit ────────────────────────────────────────────────────
+async function submitSurat() {
+  const jenisArsipId    = document.getElementById('selJenis').value;
+  const klasifikasiId   = document.getElementById('selKlasifikasi').value;
+  const perihal         = document.getElementById('perihal').value.trim();
+  const pengirim        = document.getElementById('pengirim').value.trim();
+  const tglSurat        = document.getElementById('tglSurat').value;
+  hideErr();
+  if (!perihal || !pengirim || !tglSurat) {
+    showErr('Lengkapi semua data surat terlebih dahulu.');
+    return;
+  }
+  setBtnLoading(true);
+  try {
+    const r = await fetch(gasUrl(),{
+      method:'POST',
+      body:JSON.stringify({action:'submitSurat',jenisArsipId,klasifikasiId,perihal,pengirim,tglSurat})
+    }).then(r=>r.json());
+    if (r.success) {
+      lastNoSurat = r.noSurat;
+      document.getElementById('modalNoTxt').textContent = r.noSurat;
+      document.getElementById('copyHint').textContent = '// klik untuk menyalin';
+      document.getElementById('modalBg').classList.add('show');
+      document.getElementById('s2').className = 'step done';
+      document.getElementById('s3').className = 'step active';
+    } else {
+      showErr(r.message || 'Gagal menyimpan surat.');
+    }
+  } catch(e) {
+    showErr('Gagal terhubung ke server. Coba lagi.');
+  }
+  setBtnLoading(false);
+}
+
+function setBtnLoading(v) {
+  const btn = document.getElementById('btnSubmit');
+  btn.disabled = v;
+  document.getElementById('btnTxt').style.display = v ? 'none' : '';
+  document.getElementById('btnLoad').style.display = v ? 'flex' : 'none';
+}
+
+function copyNo() {
+  navigator.clipboard.writeText(lastNoSurat).then(() => {
+    document.getElementById('copyHint').textContent = '✓ Tersalin!';
+  });
+}
+
+function closeModal() {
+  document.getElementById('modalBg').classList.remove('show');
+}
+
+function resetForm() {
+  closeModal();
+  document.getElementById('selJenis').value = '';
+  document.getElementById('selKlasifikasi').innerHTML = '<option value="">— Pilih Klasifikasi —</option>';
+  document.getElementById('selKlasifikasi').disabled = true;
+  document.getElementById('klPreview').classList.remove('show');
+  document.getElementById('perihal').value = '';
+  document.getElementById('pengirim').value = '';
+  document.getElementById('tglSurat').value = '';
+  document.getElementById('btnSubmit').disabled = true;
+  document.getElementById('klHint').textContent = 'Pilih jenis arsip terlebih dahulu';
+  document.getElementById('jaHint').textContent = `${jenisData.length} jenis arsip tersedia`;
+  document.getElementById('s1').className = 'step active';
+  document.getElementById('s2').className = 'step';
+  document.getElementById('s3').className = 'step';
+  updatePreview();
+}
+
+function showErr(msg) {
+  const el = document.getElementById('alertErr');
+  el.textContent = msg; el.classList.add('show');
+  el.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function hideErr() { document.getElementById('alertErr').classList.remove('show'); }
+
+// Set today's date as default
+document.getElementById('tglSurat').value = new Date().toISOString().split('T')[0];
+
+init();
+
+const lf = document.createElement('link');
+lf.rel='stylesheet';
+lf.href='https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap';
+document.head.appendChild(lf);
+</script>
+</body>
+</html>

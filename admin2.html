@@ -315,7 +315,7 @@ tr:hover td{background:var(--glass)}
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>No Surat</th><th>Klasifikasi</th><th>Perihal</th><th>Alamat Penerima</th><th>Tgl Surat</th><th>Tgl Input</th><th>Aksi</th></tr></thead>
+            <thead><tr><th>No Surat</th><th>Jenis</th><th>Klasifikasi</th><th>Perihal</th><th>Pengirim</th><th>Tgl Surat</th><th>Aksi</th></tr></thead>
             <tbody id="suratTbl"><tr class="empty-row"><td colspan="7">Memuat data...</td></tr></tbody>
           </table>
         </div>
@@ -445,7 +445,7 @@ tr:hover td{background:var(--glass)}
 <div class="toast" id="toast"></div>
 
 <script>
-const GAS_DEF = 'https://script.google.com/macros/s/AKfycbz7W34A80P0LNl0D2qZuMYd9tXYbiuT5u3uq9baDL0-4qK6QOL5gko-Kyyhuij_svZ3/exec';
+const GAS_DEF = 'https://script.google.com/macros/s/AKfycbwCw_Aw1LM3Xzhlfmv3u2PPI1-qF32OF1e1CFjtMUfWGwgJbB4XmZ5txN5m2mY-2AIH/exec';
 const gasUrl = () => localStorage.getItem('GAS_URL') || GAS_DEF;
 
 // ── Auth guard ─────────────────────────────────────────────────
@@ -745,24 +745,24 @@ async function loadSurat() {
 function renderSuratTable() {
   const q = (document.getElementById('filterSurat').value || '').toLowerCase();
   let data = suratList;
-  if (q) data = data.filter(s => (s.noSurat||'').toLowerCase().includes(q) || (s.perihal||'').toLowerCase().includes(q) || (s.alamat||'').toLowerCase().includes(q));
+  if (q) data = data.filter(s => (s.noSurat||'').toLowerCase().includes(q) || (s.perihal||'').toLowerCase().includes(q));
   const tbody = document.getElementById('suratTbl');
   if (!data.length) { tbody.innerHTML = '<tr class="empty-row"><td colspan="7">Tidak ada data surat</td></tr>'; return; }
   tbody.innerHTML = data.map(s => `
     <tr>
       <td><span style="font-family:var(--mono);font-size:.78rem;color:var(--accent);font-weight:700">${esc(s.noSurat)}</span></td>
+      <td style="font-size:.75rem;color:var(--text-muted)">${esc(s.namaJenis||'')}</td>
       <td style="font-size:.75rem;color:var(--text-muted)">${esc(s.namaKlasifikasi||'')}</td>
-      <td>${esc(s.perihal||'')}</td>
-      <td style="font-size:.78rem">${esc(s.alamat||'')}</td>
-      <td style="font-size:.75rem;font-family:var(--mono)">${esc(String(s.tglSurat||'').slice(0,10))}</td>
-      <td style="font-size:.73rem;font-family:var(--mono);color:var(--text-muted)">${esc(String(s.tglInput||'').slice(0,10))}</td>
-      <td><button class="btn-sm danger" onclick="deleteSurat('${s.rowIndex}','${esc(s.sheetName)}','${esc(s.noSurat)}')">Hapus</button></td>
+      <td>${esc(s.perihal)}</td>
+      <td>${esc(s.pengirim)}</td>
+      <td style="font-size:.75rem;font-family:var(--mono)">${esc(s.tglSurat||'')}</td>
+      <td><button class="btn-sm danger" onclick="deleteSurat('${s.id}','${esc(s.noSurat)}')">Hapus</button></td>
     </tr>`).join('');
 }
 
-function deleteSurat(rowIndex, sheetName, noSurat) {
-  confirmAction(`Hapus surat "${noSurat}"?`, async () => {
-    const r = await gas({action:'deleteSurat', rowIndex: Number(rowIndex), sheetName});
+function deleteSurat(id, no) {
+  confirmAction(`Hapus surat "${no}"?`, async () => {
+    const r = await gas({action:'deleteSurat', id});
     if (r.success) { await loadSurat(); toast('Surat dihapus'); }
     else toast(r.message || 'Gagal','err');
   });
@@ -856,8 +856,8 @@ function renderDashboard() {
     <tr>
       <td><span style="font-family:var(--mono);font-size:.78rem;color:var(--accent);font-weight:700">${esc(s.noSurat)}</span></td>
       <td>${esc(s.perihal||'')}</td>
-      <td>${esc(s.alamat||'')}</td>
-      <td style="font-size:.73rem;font-family:var(--mono);color:var(--text-muted)">${esc(String(s.tglInput||'').slice(0,10))}</td>
+      <td>${esc(s.pengirim||'')}</td>
+      <td style="font-size:.73rem;font-family:var(--mono);color:var(--text-muted)">${(s.tglInput||'').slice(0,10)}</td>
     </tr>`).join('');
 }
 

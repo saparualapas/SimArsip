@@ -1,34 +1,37 @@
 // ============================================================
-//  SIMARSIP — Google Apps Script Backend  v2.1
-//  Kompatibel dengan struktur sheet yang sudah ada:
+//  SIMARSIP — Google Apps Script Backend  v2.2
 //
-//  • Users       : ID | Role | Email | Password | Nama
-//  • Klasifikasi : ID | Nama | Kode | Keterangan
-//  • KodeWilayah : key | value
-//  • Config      : key | value  (counter & konfigurasi)
-//  • Data_Surat_YYYY : id | noSurat | klasifikasiId | jenisArsipId | perihal | pengirim | tglSurat | tglInput | userId
-//  • JenisArsip  : ID | Kode | Nama | Aktif  (opsional, bisa di-derive dari Klasifikasi)
+//  Struktur sheet Data_Surat_YYYY yang sudah ada:
+//    No_Surat | Alamat_Penerima | Tanggal_Sura | Perihal |
+//    Timestamp_Inpu | User_Emai | User_Nama
+//    + kolom No (nomor urut) dibaca dari baris terakhir
+//
+//  Sheet Klasifikasi: ID | Nama | Kode | Keterangan
+//    Kode contoh: UM.01.01, PR.01.01 → prefix huruf = jenis arsip
+//    Nama = label jenis arsip (Program dan Anggaran, dst)
+//
+//  Nomor surat format: WP.28.PAS.8.UM.01.01-N
+//    prefixWil.kodeWil.kodeKlasifikasi-nomorUrut
 // ============================================================
 
 const SS = SpreadsheetApp.getActiveSpreadsheet();
 
-// ─── Data_Surat sheet name (per tahun) ───────────────────────
+// ── Cari sheet Data_Surat tahun ini ──────────────────────────
 function getSuratSheetName() {
   const yr = new Date().getFullYear();
-  const byYear = SS.getSheetByName('Data_Surat_' + yr);
-  if (byYear) return 'Data_Surat_' + yr;
-  const generic = SS.getSheetByName('Data_Surat');
-  if (generic) return 'Data_Surat';
+  if (SS.getSheetByName('Data_Surat_' + yr)) return 'Data_Surat_' + yr;
+  if (SS.getSheetByName('Data_Surat'))       return 'Data_Surat';
   return 'Data_Surat_' + yr;
 }
 
-// ─── Sheet getter + auto-create ──────────────────────────────
+// ── Sheet getter + auto-create ───────────────────────────────
 function getSheet(name) {
   let sh = SS.getSheetByName(name);
   if (!sh) {
     sh = SS.insertSheet(name);
     if (name.startsWith('Data_Surat')) {
-      sh.appendRow(['id','noSurat','klasifikasiId','jenisArsipId','perihal','pengirim','tglSurat','tglInput','userId']);
+      // Header sesuai format sheet yang sudah ada
+      sh.appendRow(['No_Surat','Alamat_Penerima','Tanggal_Sura','Perihal','Timestamp_Inpu','User_Emai','User_Nama']);
     } else if (name === 'KodeWilayah') {
       sh.appendRow(['key','value']);
       sh.appendRow(['prefixWil','WP.28.PAS']);
@@ -37,34 +40,44 @@ function getSheet(name) {
       sh.appendRow(['key','value']);
     } else if (name === 'JenisArsip') {
       sh.appendRow(['ID','Kode','Nama','Aktif']);
-      seedJenisArsipFromKlasifikasi(sh);
+      _seedJenisFromKlasifikasi(sh);
     }
   }
   return sh;
 }
 
-// ─── Sheet → array of objects (header case-insensitive) ──────
-function sheetToObjects(sh) {
+// ── Header helper ─────────────────────────────────────────────
+function hdrs(sh) {
+  return sh.getDataRange().getValues()[0].map(h => String(h).trim().toLowerCase().replace(/[_\s]/g,''));
+}
+function ci(H, name) {
+  // Cari kolom by nama, toleran terhadap underscore/spasi/truncation
+  const n = name.toLowerCase().replace(/[_\s]/g,'');
+  // Exact match dulu
+  let i = H.indexOf(n);
+  if (i >= 0) return i;
+  // Partial: header starts with name (untuk kolom yang terpotong seperti "tanggal_sura")
+  i = H.findIndex(h => h.startsWith(n) || n.startsWith(h));
+  return i;
+}
+
+// ── Sheet → array objects ────────────────────────────────────
+function sheetRows(sh) {
   const data = sh.getDataRange().getValues();
   if (data.length < 2) return [];
-  const headers = data[0].map(h => String(h).trim().toLowerCase());
+  const H = data[0].map(h => String(h).trim().toLowerCase().replace(/[_\s]/g,''));
   return data.slice(1)
     .filter(r => r.some(c => c !== '' && c !== null && c !== undefined))
-    .map(r => {
-      const obj = {};
-      headers.forEach((h, i) => { obj[h] = r[i]; });
+    .map((r, idx) => {
+      const obj = {_rowIndex: idx + 2}; // 1-based, +1 header, +1 for slice
+      H.forEach((h, i) => { obj[h] = r[i]; });
       return obj;
     });
 }
 
-function genId() {
-  return Utilities.getUuid().replace(/-/g,'').substring(0,16);
-}
+function genId() { return Utilities.getUuid().replace(/-/g,'').substring(0,16); }
 
-// ─── Get column index safely ─────────────────────────────────
-function col(headers, name) { return headers.indexOf(name.toLowerCase()); }
-
-// ─── doPost router ───────────────────────────────────────────
+// ── doPost router ────────────────────────────────────────────
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
@@ -88,62 +101,51 @@ function doPost(e) {
       case 'addUser':           result = addUser(body); break;
       case 'editUser':          result = editUser(body); break;
       case 'deleteUser':        result = deleteUser(body); break;
-      default: result = {success:false, message:'Action tidak dikenali: ' + body.action};
+      default: result = {success:false, message:'Action tidak dikenali: '+body.action};
     }
     return ContentService.createTextOutput(JSON.stringify(result))
       .setMimeType(ContentService.MimeType.JSON);
   } catch(err) {
     return ContentService.createTextOutput(JSON.stringify({
-      success: false, message: 'Server error: ' + err.toString()
+      success:false, message:'Server error: '+err.toString()
     })).setMimeType(ContentService.MimeType.JSON);
   }
 }
 
 function doGet() {
-  return ContentService.createTextOutput(JSON.stringify({
-    status: 'SIMARSIP GAS v2.1 OK', time: new Date().toISOString()
-  })).setMimeType(ContentService.MimeType.JSON);
+  return ContentService.createTextOutput(JSON.stringify({status:'SIMARSIP v2.2 OK', time:new Date().toISOString()}))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
-// ══════════════════════════════════════════════════════════════
-//  AUTH — membaca kolom dinamis (ID|Role|Email|Password|Nama)
-// ══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
+//  AUTH
+// ════════════════════════════════════════════════════════════
 function login({email, password}) {
   const sh = SS.getSheetByName('Users');
   if (!sh) return {success:false, message:'Sheet Users tidak ditemukan.'};
-
   const rows = sh.getDataRange().getValues();
   if (rows.length < 2) return {success:false, message:'Belum ada data pengguna.'};
-
-  const H = rows[0].map(h => String(h).trim().toLowerCase());
-  const iId   = col(H,'id');
-  const iRole = col(H,'role');
-  const iMail = col(H,'email');
-  const iPw   = col(H,'password');
-  const iNama = col(H,'nama');
-
-  if (iMail < 0 || iPw < 0) return {success:false, message:'Kolom Email/Password tidak ada di sheet Users.'};
-
+  const H = rows[0].map(h => String(h).trim().toLowerCase().replace(/[_\s]/g,''));
+  const iId=ci(H,'id'), iRole=ci(H,'role'), iMail=ci(H,'email'), iPw=ci(H,'password'), iNama=ci(H,'nama');
+  if (iMail<0||iPw<0) return {success:false, message:'Kolom Email/Password tidak ditemukan di sheet Users.'};
   const emailIn = String(email).trim().toLowerCase();
   const pwIn    = String(password).trim();
-
   const found = rows.slice(1).find(r =>
     String(r[iMail]).trim().toLowerCase() === emailIn &&
     String(r[iPw]).trim() === pwIn
   );
   if (!found) return {success:false, message:'Email atau password salah.'};
-
   return {success:true, user:{
-    id:    iId   >= 0 ? String(found[iId]).trim()   : emailIn,
+    id:    iId>=0   ? String(found[iId]).trim()   : emailIn,
     email: String(found[iMail]).trim(),
-    role:  iRole >= 0 ? String(found[iRole]).trim().toLowerCase() : 'user',
-    nama:  iNama >= 0 ? String(found[iNama]).trim()  : email,
+    role:  iRole>=0 ? String(found[iRole]).trim().toLowerCase() : 'user',
+    nama:  iNama>=0 ? String(found[iNama]).trim() : email,
   }};
 }
 
-// ══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
 //  KODE WILAYAH
-// ══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
 function getKodeWilayah() {
   let sh = SS.getSheetByName('KodeWilayah') || SS.getSheetByName('Config');
   if (!sh) sh = getSheet('KodeWilayah');
@@ -170,300 +172,348 @@ function updateKodeWilayah({user, prefixWil, kodeWil}) {
   return {success:true};
 }
 
-// ══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
 //  JENIS ARSIP
-//  Derive otomatis dari prefix kode Klasifikasi (PR, KU, OT, SA...)
-//  Nama diambil dari bagian sebelum " – " di kolom Keterangan
-// ══════════════════════════════════════════════════════════════
+//  Derive dari prefix kode Klasifikasi: UM.01.01 → prefix "UM"
+//  Nama jenis = bagian sebelum " – " di Keterangan, atau kolom Nama
+// ════════════════════════════════════════════════════════════
 function getJenisArsip() {
-  // Jika ada sheet JenisArsip manual → pakai itu
   const shJA = SS.getSheetByName('JenisArsip');
-  if (shJA && shJA.getLastRow() >= 2) {
+  if (shJA && shJA.getLastRow()>=2) {
     const rows = shJA.getDataRange().getValues();
-    const H = rows[0].map(h=>String(h).trim().toLowerCase());
-    const iId=col(H,'id'), iKode=col(H,'kode'), iNama=col(H,'nama'), iAktif=col(H,'aktif');
+    const H = rows[0].map(h=>String(h).trim().toLowerCase().replace(/[_\s]/g,''));
+    const iId=ci(H,'id'), iKode=ci(H,'kode'), iNama=ci(H,'nama'), iAktif=ci(H,'aktif');
     const data = rows.slice(1).filter(r=>r.some(c=>c!=='')).map(r=>({
-      id:   iId>=0   ? String(r[iId]).trim()   : String(r[iKode]||r[0]).trim(),
-      kode: iKode>=0 ? String(r[iKode]).trim()  : String(r[0]).trim(),
-      nama: iNama>=0 ? String(r[iNama]).trim()  : '',
+      id:   iId>=0   ? String(r[iId]).trim()  : String(r[iKode]||r[0]).trim(),
+      kode: iKode>=0 ? String(r[iKode]).trim() : String(r[0]).trim(),
+      nama: iNama>=0 ? String(r[iNama]).trim() : '',
     })).filter(j=>{
-      const row = rows.slice(1).find(r=> (iId>=0?String(r[iId]):String(r[iKode||0])).trim()===j.id);
-      if (!row||iAktif<0) return true;
-      const v = String(row[iAktif]).toUpperCase();
+      if (iAktif<0) return true;
+      const found = rows.slice(1).find(r=>(iId>=0?r[iId]:r[iKode||0])===j.id||r[iId]===j.id);
+      if (!found) return true;
+      const v = String(found[iAktif]).toUpperCase();
       return v!=='FALSE'&&v!=='0'&&v!=='TIDAK';
     });
     if (data.length) return {success:true, data};
   }
-  // Derive dari Klasifikasi
-  return deriveJenisArsip();
+  return _deriveJenisArsip();
 }
 
-function deriveJenisArsip() {
+function _deriveJenisArsip() {
   const sh = SS.getSheetByName('Klasifikasi');
   if (!sh || sh.getLastRow()<2) return {success:true, data:[]};
   const rows = sh.getDataRange().getValues();
-  const H = rows[0].map(h=>String(h).trim().toLowerCase());
-  const iKode=col(H,'kode'), iKet=col(H,'keterangan');
+  const H = rows[0].map(h=>String(h).trim().toLowerCase().replace(/[_\s]/g,''));
+  const iKode=ci(H,'kode'), iNama=ci(H,'nama'), iKet=ci(H,'keterangan');
   const map = {};
   rows.slice(1).filter(r=>r.some(c=>c!=='')).forEach(r=>{
     const kode = iKode>=0 ? String(r[iKode]).trim() : '';
     if (!kode) return;
-    const prefix = kode.replace(/[^A-Za-z]/g,'').toUpperCase().slice(0,2);
+    // Prefix = huruf di awal sebelum titik pertama: UM.01.01 → UM
+    const prefix = kode.split('.')[0].replace(/[^A-Za-z]/g,'').toUpperCase();
     if (!prefix||map[prefix]) return;
+    // Nama = bagian sebelum " – " di keterangan
     let nama = prefix;
     if (iKet>=0){
-      const ket = String(r[iKet]).trim();
-      const bag = ket.split('–')[0].split('-')[0].trim();
-      if (bag && bag.length>1 && bag.length<50) nama = bag;
+      const ket=String(r[iKet]).trim();
+      const bag=ket.split('–')[0].split(' - ')[0].trim();
+      if(bag&&bag.length>1&&bag.length<50) nama=bag;
+    } else if (iNama>=0) {
+      nama = String(r[iNama]).trim() || prefix;
     }
-    map[prefix] = {id:prefix, kode:prefix, nama};
+    map[prefix]={id:prefix, kode:prefix, nama};
   });
   return {success:true, data:Object.values(map)};
 }
 
-function seedJenisArsipFromKlasifikasi(sh) {
-  const r = deriveJenisArsip();
-  if (r.success) r.data.forEach(j=>sh.appendRow([j.id,j.kode,j.nama,true]));
+function _seedJenisFromKlasifikasi(sh) {
+  const r=_deriveJenisArsip();
+  if(r.success) r.data.forEach(j=>sh.appendRow([j.id,j.kode,j.nama,true]));
 }
 
 function addJenisArsip({user,kode,nama}) {
-  if (!isAdmin(user)) return noAuth();
-  const sh = getSheet('JenisArsip');
-  sh.appendRow([kode,kode,nama,true]);
+  if(!isAdmin(user)) return noAuth();
+  getSheet('JenisArsip').appendRow([kode,kode,nama,true]);
   return {success:true};
 }
 
 function editJenisArsip({user,id,kode,nama,aktif}) {
-  if (!isAdmin(user)) return noAuth();
-  const sh = SS.getSheetByName('JenisArsip');
-  if (!sh) return {success:false};
-  const rows = sh.getDataRange().getValues();
-  const H = rows[0].map(h=>String(h).trim().toLowerCase());
+  if(!isAdmin(user)) return noAuth();
+  const sh=SS.getSheetByName('JenisArsip');
+  if(!sh) return {success:false};
+  const rows=sh.getDataRange().getValues();
+  const H=rows[0].map(h=>String(h).trim().toLowerCase().replace(/[_\s]/g,''));
   rows.forEach((r,i)=>{
-    if (!i) return;
-    if (String(r[col(H,'id')||0]).trim()===id){
-      if (col(H,'kode')>=0) sh.getRange(i+1,col(H,'kode')+1).setValue(kode);
-      if (col(H,'nama')>=0) sh.getRange(i+1,col(H,'nama')+1).setValue(nama);
-      if (col(H,'aktif')>=0) sh.getRange(i+1,col(H,'aktif')+1).setValue(aktif);
+    if(!i) return;
+    if(String(r[ci(H,'id')||0]).trim()===id){
+      if(ci(H,'kode')>=0) sh.getRange(i+1,ci(H,'kode')+1).setValue(kode);
+      if(ci(H,'nama')>=0) sh.getRange(i+1,ci(H,'nama')+1).setValue(nama);
+      if(ci(H,'aktif')>=0) sh.getRange(i+1,ci(H,'aktif')+1).setValue(aktif);
     }
   });
   return {success:true};
 }
 
 function deleteJenisArsip({user,id}) {
-  if (!isAdmin(user)) return noAuth();
-  return deleteRowByField(SS.getSheetByName('JenisArsip'),'id',id);
+  if(!isAdmin(user)) return noAuth();
+  return _deleteByField(SS.getSheetByName('JenisArsip'),'id',id);
 }
 
-// ══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
 //  KLASIFIKASI
 //  Sheet: ID | Nama | Kode | Keterangan
-//  jenisArsipId diderive dari prefix kode huruf
-// ══════════════════════════════════════════════════════════════
+//  Kode contoh: UM.01.01, PR.01.02 — PAKAI KODE PENUH di nomor surat
+//  jenisArsipId = prefix huruf dari kode (UM, PR, KU, ...)
+// ════════════════════════════════════════════════════════════
 function getKlasifikasi({jenisArsipId}) {
-  const sh = SS.getSheetByName('Klasifikasi');
-  if (!sh || sh.getLastRow()<2) return {success:true, data:[]};
-  const rows = sh.getDataRange().getValues();
-  const H = rows[0].map(h=>String(h).trim().toLowerCase());
-  const iId=col(H,'id'), iNama=col(H,'nama'), iKode=col(H,'kode'), iKet=col(H,'keterangan'), iAktif=col(H,'aktif');
+  const sh=SS.getSheetByName('Klasifikasi');
+  if(!sh||sh.getLastRow()<2) return {success:true,data:[]};
+  const rows=sh.getDataRange().getValues();
+  const H=rows[0].map(h=>String(h).trim().toLowerCase().replace(/[_\s]/g,''));
+  const iId=ci(H,'id'), iNama=ci(H,'nama'), iKode=ci(H,'kode'), iKet=ci(H,'keterangan'), iAktif=ci(H,'aktif');
 
-  let data = rows.slice(1).filter(r=>r.some(c=>c!=='')).map(r=>{
-    const kode = iKode>=0 ? String(r[iKode]).trim() : '';
-    const prefix = kode.replace(/[^A-Za-z]/g,'').toUpperCase().slice(0,2);
+  let data=rows.slice(1).filter(r=>r.some(c=>c!=='')).map(r=>{
+    const kode=iKode>=0?String(r[iKode]).trim():'';
+    // Prefix = huruf pertama sebelum titik
+    const prefix=kode.split('.')[0].replace(/[^A-Za-z]/g,'').toUpperCase();
     return {
-      id:           iId>=0   ? String(r[iId]).trim()   : kode,
-      nama:         iNama>=0 ? String(r[iNama]).trim()  : '',
-      kode:         kode,
-      keterangan:   iKet>=0  ? String(r[iKet]).trim()   : '',
+      id:           iId>=0   ? String(r[iId]).trim()  : kode,
+      nama:         iNama>=0 ? String(r[iNama]).trim() : '',
+      kode:         kode,           // KODE PENUH: UM.01.01
+      keterangan:   iKet>=0  ? String(r[iKet]).trim()  : '',
       jenisArsipId: prefix,
       aktif:        iAktif>=0 ? r[iAktif] : true,
     };
   }).filter(k=>{
-    const v = String(k.aktif).toUpperCase();
+    const v=String(k.aktif).toUpperCase();
     return v!=='FALSE'&&v!=='0'&&v!=='TIDAK';
   });
 
-  if (jenisArsipId) data = data.filter(k=>k.jenisArsipId===jenisArsipId);
+  if(jenisArsipId) data=data.filter(k=>k.jenisArsipId===jenisArsipId);
   return {success:true, data};
 }
 
 function addKlasifikasi({user,jenisArsipId,kode,nama,keterangan}) {
-  if (!isAdmin(user)) return noAuth();
-  const sh = SS.getSheetByName('Klasifikasi');
-  if (!sh) return {success:false, message:'Sheet Klasifikasi tidak ditemukan.'};
-  const id = 'KLS_'+kode.replace(/\./g,'');
-  // Urutan kolom: ID | Nama | Kode | Keterangan
-  sh.appendRow([id, nama||kode, kode, keterangan||'', true]);
+  if(!isAdmin(user)) return noAuth();
+  const sh=SS.getSheetByName('Klasifikasi');
+  if(!sh) return {success:false,message:'Sheet Klasifikasi tidak ditemukan.'};
+  const id='KLS_'+kode.replace(/\./g,'');
+  sh.appendRow([id,nama||kode,kode,keterangan||'',true]);
   return {success:true};
 }
 
 function editKlasifikasi({user,id,kode,nama,keterangan,aktif}) {
-  if (!isAdmin(user)) return noAuth();
-  const sh = SS.getSheetByName('Klasifikasi');
-  if (!sh) return {success:false};
-  const rows = sh.getDataRange().getValues();
-  const H = rows[0].map(h=>String(h).trim().toLowerCase());
+  if(!isAdmin(user)) return noAuth();
+  const sh=SS.getSheetByName('Klasifikasi');
+  if(!sh) return {success:false};
+  const rows=sh.getDataRange().getValues();
+  const H=rows[0].map(h=>String(h).trim().toLowerCase().replace(/[_\s]/g,''));
   rows.forEach((r,i)=>{
-    if (!i) return;
-    if (String(r[col(H,'id')||0]).trim()===id){
-      if (col(H,'nama')>=0)        sh.getRange(i+1,col(H,'nama')+1).setValue(nama||kode);
-      if (col(H,'kode')>=0)        sh.getRange(i+1,col(H,'kode')+1).setValue(kode);
-      if (col(H,'keterangan')>=0)  sh.getRange(i+1,col(H,'keterangan')+1).setValue(keterangan||'');
-      if (col(H,'aktif')>=0)       sh.getRange(i+1,col(H,'aktif')+1).setValue(aktif);
+    if(!i) return;
+    if(String(r[ci(H,'id')||0]).trim()===id){
+      if(ci(H,'nama')>=0)       sh.getRange(i+1,ci(H,'nama')+1).setValue(nama||kode);
+      if(ci(H,'kode')>=0)       sh.getRange(i+1,ci(H,'kode')+1).setValue(kode);
+      if(ci(H,'keterangan')>=0) sh.getRange(i+1,ci(H,'keterangan')+1).setValue(keterangan||'');
+      if(ci(H,'aktif')>=0)      sh.getRange(i+1,ci(H,'aktif')+1).setValue(aktif);
     }
   });
   return {success:true};
 }
 
 function deleteKlasifikasi({user,id}) {
-  if (!isAdmin(user)) return noAuth();
-  return deleteRowByField(SS.getSheetByName('Klasifikasi'),'id',id);
+  if(!isAdmin(user)) return noAuth();
+  return _deleteByField(SS.getSheetByName('Klasifikasi'),'id',id);
 }
 
-// ══════════════════════════════════════════════════════════════
-//  SURAT
-// ══════════════════════════════════════════════════════════════
-function submitSurat({jenisArsipId,klasifikasiId,perihal,pengirim,tglSurat,userId}) {
+// ════════════════════════════════════════════════════════════
+//  SURAT — menulis ke sheet Data_Surat_YYYY dengan format asli
+//
+//  Kolom output: No_Surat | Alamat_Penerima | Tanggal_Sura |
+//                Perihal | Timestamp_Inpu | User_Emai | User_Nama
+//
+//  Nomor urut (No) dibaca dari jumlah baris data existing
+//  Nomor surat: prefixWil.kodeWil.kodeKlasifikasiPenuh-nomorUrut
+//  Contoh:      WP.28.PAS.8.UM.01.01-187
+// ════════════════════════════════════════════════════════════
+function submitSurat({jenisArsipId, klasifikasiId, alamat, perihal, tglSurat, userEmail, userNama}) {
+  // Ambil data klasifikasi
   const klData = getKlasifikasi({}).data;
   const kl = klData.find(k=>k.id===klasifikasiId);
   if (!kl) return {success:false, message:'Klasifikasi tidak ditemukan: '+klasifikasiId};
 
-  const jaKode = jenisArsipId || kl.jenisArsipId;
-  const wil    = getKodeWilayah().data;
+  // Kode wilayah
+  const wil = getKodeWilayah().data;
 
-  // Counter per kode klasifikasi, simpan di sheet Config
-  const cKey = 'CTR_'+kl.kode.replace(/\./g,'');
-  const shCfg = getSheet('Config');
-  const cfgRows = shCfg.getDataRange().getValues();
-  let cRow=-1, cVal=0;
-  cfgRows.forEach((r,i)=>{ if(!i)return; if(String(r[0]).trim()===cKey){cRow=i+1;cVal=Number(r[1])||0;} });
-  cVal++;
-  if (cRow>0) shCfg.getRange(cRow,2).setValue(cVal);
-  else shCfg.appendRow([cKey,cVal]);
-
-  // Nomor surat: WP.28.PAS.8.PR.01-5
-  const noSurat = `${wil.prefixWil}.${wil.kodeWil}.${kl.kode}-${cVal}`;
-
+  // Nomor urut — baca dari jumlah baris di sheet + 1
   const shSurat = getSheet(getSuratSheetName());
-  const id = genId();
-  shSurat.appendRow([id, noSurat, klasifikasiId, jaKode, perihal, pengirim, tglSurat, new Date().toISOString(), userId||'']);
-  return {success:true, noSurat, id};
+  const lastRow = shSurat.getLastRow(); // termasuk header
+  // lastRow - 1 = jumlah data (header = row 1)
+  const nomorUrut = lastRow; // row berikutnya = lastRow+1, tapi nomorUrut = lastRow (karena header=1)
+
+  // Format nomor surat LENGKAP: WP.28.PAS.8.UM.01.01-187
+  // kl.kode sudah berisi kode penuh misal "UM.01.01"
+  const noSurat = `${wil.prefixWil}.${wil.kodeWil}.${kl.kode}-${nomorUrut}`;
+
+  // Cek header sheet untuk tahu urutan kolom yang benar
+  const hRow = shSurat.getRange(1,1,1,shSurat.getLastColumn()).getValues()[0];
+  const H = hRow.map(h=>String(h).trim().toLowerCase().replace(/[_\s]/g,''));
+
+  // Buat baris baru sesuai urutan kolom sheet asli
+  const newRow = new Array(H.length).fill('');
+  const now = new Date().toISOString();
+
+  // Map nilai ke kolom yang tepat
+  const mapping = {
+    'nosurat':          noSurat,
+    'no_surat':         noSurat,
+    'alamatpenerima':   alamat || '',
+    'alamat_penerima':  alamat || '',
+    'tanggalsura':      tglSurat || '',
+    'tanggal_sura':     tglSurat || '',
+    'tanggalsurat':     tglSurat || '',
+    'tanggal_surat':    tglSurat || '',
+    'perihal':          perihal || '',
+    'timestampinpu':    now,
+    'timestamp_inpu':   now,
+    'timestamp':        now,
+    'useremai':         userEmail || '',
+    'user_emai':        userEmail || '',
+    'useremail':        userEmail || '',
+    'usernama':         userNama  || '',
+    'user_nama':        userNama  || '',
+  };
+
+  H.forEach((h,i) => {
+    if (mapping[h] !== undefined) newRow[i] = mapping[h];
+  });
+
+  shSurat.appendRow(newRow);
+  return {success:true, noSurat, nomorUrut};
 }
 
-function getSurat({user,limit}) {
+// ── Ambil data surat untuk admin ────────────────────────────
+function getSurat({user, limit}) {
   if (!isAdmin(user)) return noAuth();
   const klAll = getKlasifikasi({}).data;
   let allData = [];
 
   SS.getSheets().filter(sh=>sh.getName().startsWith('Data_Surat')).forEach(sh=>{
-    const rows = sh.getDataRange().getValues();
-    if (rows.length<2) return;
-    const H = rows[0].map(h=>String(h).trim().toLowerCase());
-    rows.slice(1).filter(r=>r.some(c=>c!=='')).forEach(r=>{
-      const klId = col(H,'klasifikasiid')>=0 ? String(r[col(H,'klasifikasiid')]).trim() : '';
-      const klObj = klAll.find(k=>k.id===klId)||{};
+    const rows=sh.getDataRange().getValues();
+    if(rows.length<2) return;
+    const H=rows[0].map(h=>String(h).trim().toLowerCase().replace(/[_\s]/g,''));
+    const iNo    = ci(H,'nosurat');
+    const iAlamat= ci(H,'alamatpenerima');
+    const iTgl   = ci(H,'tanggalsura');      // kolom terpotong
+    const iPerihal=ci(H,'perihal');
+    const iTglIn = ci(H,'timestampinpu');
+    const iUEmail= ci(H,'useremai');
+    const iUNama = ci(H,'usernama');
+
+    rows.slice(1).filter(r=>r.some(c=>c!=='')).forEach((r,idx)=>{
+      const noSurat = iNo>=0 ? String(r[iNo]).trim() : '';
+      // Skip baris lama yang tidak punya noSurat valid (data sebelum pakai sistem ini)
       allData.push({
-        id:             col(H,'id')>=0        ? r[col(H,'id')]       : '',
-        noSurat:        col(H,'nosurat')>=0   ? r[col(H,'nosurat')]  : '',
-        klasifikasiId:  klId,
-        jenisArsipId:   col(H,'jenisarsipid')>=0 ? r[col(H,'jenisarsipid')] : klObj.jenisArsipId||'',
-        perihal:        col(H,'perihal')>=0   ? r[col(H,'perihal')]  : '',
-        pengirim:       col(H,'pengirim')>=0  ? r[col(H,'pengirim')] : '',
-        tglSurat:       col(H,'tglsurat')>=0  ? r[col(H,'tglsurat')] : '',
-        tglInput:       col(H,'tglinput')>=0  ? r[col(H,'tglinput')] : '',
-        namaKlasifikasi: klObj.nama||klObj.kode||'',
-        namaJenis:      klObj.jenisArsipId||'',
-        sheetName:      sh.getName(),
+        no:       idx+1,
+        noSurat:  noSurat,
+        alamat:   iAlamat>=0 ? String(r[iAlamat]).trim() : '',
+        perihal:  iPerihal>=0 ? String(r[iPerihal]).trim() : '',
+        tglSurat: iTgl>=0 ? r[iTgl] : '',
+        tglInput: iTglIn>=0 ? r[iTglIn] : '',
+        userEmail:iUEmail>=0 ? String(r[iUEmail]).trim() : '',
+        userNama: iUNama>=0 ? String(r[iUNama]).trim() : '',
+        sheetName:sh.getName(),
+        rowIndex: idx+2, // 1-based, +1 header
       });
     });
   });
 
+  // Sort terbaru dulu
   allData.sort((a,b)=>String(b.tglInput).localeCompare(String(a.tglInput)));
-  if (limit) allData = allData.slice(0,limit);
+  if(limit) allData=allData.slice(0,limit);
   return {success:true, data:allData};
 }
 
-function deleteSurat({user,id,sheetName}) {
-  if (!isAdmin(user)) return noAuth();
-  const sheets = sheetName
-    ? [SS.getSheetByName(sheetName)].filter(Boolean)
-    : SS.getSheets().filter(sh=>sh.getName().startsWith('Data_Surat'));
-  for (const sh of sheets) {
-    const r = deleteRowByField(sh,'id',id);
-    if (r.success) return r;
-  }
-  return {success:false, message:'Data tidak ditemukan.'};
+// ── Hapus surat ─────────────────────────────────────────────
+function deleteSurat({user, rowIndex, sheetName}) {
+  if(!isAdmin(user)) return noAuth();
+  const shName = sheetName || getSuratSheetName();
+  const sh = SS.getSheetByName(shName);
+  if(!sh) return {success:false, message:'Sheet tidak ditemukan.'};
+  if(!rowIndex||rowIndex<2) return {success:false, message:'Row tidak valid.'};
+  sh.deleteRow(rowIndex);
+  return {success:true};
 }
 
-// ══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
 //  USERS
-// ══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
 function getUsers({user}) {
-  if (!isAdmin(user)) return noAuth();
-  const sh = SS.getSheetByName('Users');
-  if (!sh) return {success:false,message:'Sheet Users tidak ditemukan.'};
-  const rows = sh.getDataRange().getValues();
-  const H = rows[0].map(h=>String(h).trim().toLowerCase());
-  return {success:true, data: rows.slice(1).filter(r=>r.some(c=>c!=='')).map(r=>({
-    id:    col(H,'id')>=0    ? String(r[col(H,'id')]).trim()    : '',
-    role:  col(H,'role')>=0  ? String(r[col(H,'role')]).trim()  : 'user',
-    email: col(H,'email')>=0 ? String(r[col(H,'email')]).trim() : '',
+  if(!isAdmin(user)) return noAuth();
+  const sh=SS.getSheetByName('Users');
+  if(!sh) return {success:false,message:'Sheet Users tidak ditemukan.'};
+  const rows=sh.getDataRange().getValues();
+  const H=rows[0].map(h=>String(h).trim().toLowerCase().replace(/[_\s]/g,''));
+  const iId=ci(H,'id'),iRole=ci(H,'role'),iMail=ci(H,'email'),iNama=ci(H,'nama');
+  return {success:true, data:rows.slice(1).filter(r=>r.some(c=>c!=='')).map(r=>({
+    id:    iId>=0  ? String(r[iId]).trim()  : '',
+    role:  iRole>=0? String(r[iRole]).trim() : 'user',
+    email: iMail>=0? String(r[iMail]).trim() : '',
     password:'***',
-    nama:  col(H,'nama')>=0  ? String(r[col(H,'nama')]).trim()  : '',
+    nama:  iNama>=0? String(r[iNama]).trim() : '',
   }))};
 }
 
 function addUser({user,email,password,role,nama}) {
-  if (!isAdmin(user)) return noAuth();
-  const sh = SS.getSheetByName('Users');
-  if (!sh) return {success:false};
-  const H = sh.getDataRange().getValues()[0].map(h=>String(h).trim().toLowerCase());
-  const newRow = new Array(H.length).fill('');
-  const id = 'USR_'+String(Date.now()).slice(-6);
-  if(col(H,'id')>=0)       newRow[col(H,'id')]       = id;
-  if(col(H,'role')>=0)     newRow[col(H,'role')]     = role||'user';
-  if(col(H,'email')>=0)    newRow[col(H,'email')]    = email;
-  if(col(H,'password')>=0) newRow[col(H,'password')] = password;
-  if(col(H,'nama')>=0)     newRow[col(H,'nama')]     = nama;
+  if(!isAdmin(user)) return noAuth();
+  const sh=SS.getSheetByName('Users');
+  if(!sh) return {success:false};
+  const H=sh.getDataRange().getValues()[0].map(h=>String(h).trim().toLowerCase().replace(/[_\s]/g,''));
+  const newRow=new Array(H.length).fill('');
+  const id='USR_'+String(Date.now()).slice(-6);
+  if(ci(H,'id')>=0)       newRow[ci(H,'id')]       = id;
+  if(ci(H,'role')>=0)     newRow[ci(H,'role')]     = role||'user';
+  if(ci(H,'email')>=0)    newRow[ci(H,'email')]    = email;
+  if(ci(H,'password')>=0) newRow[ci(H,'password')] = password;
+  if(ci(H,'nama')>=0)     newRow[ci(H,'nama')]     = nama;
   sh.appendRow(newRow);
   return {success:true};
 }
 
 function editUser({user,id,email,password,role,nama}) {
-  if (!isAdmin(user)) return noAuth();
-  const sh = SS.getSheetByName('Users');
-  if (!sh) return {success:false};
-  const rows = sh.getDataRange().getValues();
-  const H = rows[0].map(h=>String(h).trim().toLowerCase());
+  if(!isAdmin(user)) return noAuth();
+  const sh=SS.getSheetByName('Users');
+  if(!sh) return {success:false};
+  const rows=sh.getDataRange().getValues();
+  const H=rows[0].map(h=>String(h).trim().toLowerCase().replace(/[_\s]/g,''));
   rows.forEach((r,i)=>{
-    if (!i) return;
-    if (String(r[col(H,'id')||0]).trim()===id){
-      if(col(H,'email')>=0)    sh.getRange(i+1,col(H,'email')+1).setValue(email);
-      if(col(H,'role')>=0)     sh.getRange(i+1,col(H,'role')+1).setValue(role);
-      if(col(H,'nama')>=0)     sh.getRange(i+1,col(H,'nama')+1).setValue(nama);
-      if(password&&password!=='***'&&col(H,'password')>=0)
-        sh.getRange(i+1,col(H,'password')+1).setValue(password);
+    if(!i) return;
+    if(String(r[ci(H,'id')||0]).trim()===id){
+      if(ci(H,'email')>=0)    sh.getRange(i+1,ci(H,'email')+1).setValue(email);
+      if(ci(H,'role')>=0)     sh.getRange(i+1,ci(H,'role')+1).setValue(role);
+      if(ci(H,'nama')>=0)     sh.getRange(i+1,ci(H,'nama')+1).setValue(nama);
+      if(password&&password!=='***'&&ci(H,'password')>=0)
+        sh.getRange(i+1,ci(H,'password')+1).setValue(password);
     }
   });
   return {success:true};
 }
 
 function deleteUser({user,id}) {
-  if (!isAdmin(user)) return noAuth();
-  return deleteRowByField(SS.getSheetByName('Users'),'id',id);
+  if(!isAdmin(user)) return noAuth();
+  return _deleteByField(SS.getSheetByName('Users'),'id',id);
 }
 
-// ══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
 //  HELPERS
-// ══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
 function isAdmin(user) {
-  if (!user||!user.email) return false;
-  const sh = SS.getSheetByName('Users');
-  if (!sh) return false;
-  const rows = sh.getDataRange().getValues();
-  const H = rows[0].map(h=>String(h).trim().toLowerCase());
-  const iMail=col(H,'email'), iRole=col(H,'role');
-  if (iMail<0||iRole<0) return false;
+  if(!user||!user.email) return false;
+  const sh=SS.getSheetByName('Users');
+  if(!sh) return false;
+  const rows=sh.getDataRange().getValues();
+  const H=rows[0].map(h=>String(h).trim().toLowerCase().replace(/[_\s]/g,''));
+  const iMail=ci(H,'email'), iRole=ci(H,'role');
+  if(iMail<0||iRole<0) return false;
   return rows.slice(1).some(r=>
     String(r[iMail]).trim().toLowerCase()===String(user.email).trim().toLowerCase()&&
     String(r[iRole]).trim().toLowerCase()==='admin'
@@ -472,13 +522,13 @@ function isAdmin(user) {
 
 function noAuth() { return {success:false, message:'Akses ditolak. Silakan login ulang.'}; }
 
-function deleteRowByField(sh, fieldName, value) {
-  if (!sh) return {success:false, message:'Sheet tidak ditemukan.'};
-  const rows = sh.getDataRange().getValues();
-  const H = rows[0].map(h=>String(h).trim().toLowerCase());
-  const iF = col(H, fieldName.toLowerCase());
-  for (let i=rows.length-1; i>=1; i--) {
-    if (String(rows[i][iF||0]).trim()===value) { sh.deleteRow(i+1); return {success:true}; }
+function _deleteByField(sh, field, value) {
+  if(!sh) return {success:false, message:'Sheet tidak ditemukan.'};
+  const rows=sh.getDataRange().getValues();
+  const H=rows[0].map(h=>String(h).trim().toLowerCase().replace(/[_\s]/g,''));
+  const iF=ci(H,field.toLowerCase());
+  for(let i=rows.length-1;i>=1;i--){
+    if(String(rows[i][iF||0]).trim()===value){sh.deleteRow(i+1);return {success:true};}
   }
-  return {success:false, message:'Data tidak ditemukan.'};
+  return {success:false,message:'Data tidak ditemukan.'};
 }
