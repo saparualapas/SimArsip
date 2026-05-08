@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIMARSIP — Sistem Manajemen Arsip Surat</title>
+<style>
+:root{
+  --primary:#1a3a5c;--primary-light:#234d7a;
+  --accent:#e8a020;--accent-light:#f5c04a;
+  --surface:#0d2035;--bg:#081624;--text:#e8f0f8;--text-muted:#7a9bb8;
+  --border:rgba(255,255,255,0.08);--glass:rgba(255,255,255,0.04);
+  --ok:#2dd4a0;--err:#ef4444;
+  --mono:'JetBrains Mono',monospace;--sans:'Sora',sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh}
+
+/* BG */
+.bg-grid{position:fixed;inset:0;z-index:0;background-image:linear-gradient(rgba(26,58,92,.25) 1px,transparent 1px),linear-gradient(90deg,rgba(26,58,92,.25) 1px,transparent 1px);background-size:48px 48px;mask-image:radial-gradient(ellipse 100% 100% at 50% 0%,black 40%,transparent 100%);pointer-events:none}
+.glow-orb{position:fixed;border-radius:50%;filter:blur(100px);z-index:0;pointer-events:none}
+.g1{width:600px;height:600px;background:rgba(26,58,92,.4);top:-200px;left:-100px}
+.g2{width:400px;height:400px;background:rgba(232,160,32,.08);bottom:-100px;right:-50px}
+
+/* LAYOUT */
+.page{position:relative;z-index:1;display:flex;flex-direction:column;min-height:100vh}
+
+/* NAVBAR */
+nav{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 2rem;height:64px;
+  background:rgba(13,32,53,.8);backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;
+}
+.nav-logo{display:flex;align-items:center;gap:10px}
+.logo-icon{width:38px;height:38px;border-radius:10px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;color:var(--bg)}
+.logo-name{font-size:16px;font-weight:700;letter-spacing:-.3px}
+.logo-ver{font-size:10px;color:var(--text-muted);font-family:var(--mono)}
+.nav-links{display:flex;gap:6px}
+.nav-btn{padding:7px 16px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-muted);font-family:var(--sans);font-size:.82rem;cursor:pointer;text-decoration:none;transition:all .2s}
+.nav-btn:hover,.nav-btn.active{background:var(--glass);color:var(--text);border-color:rgba(255,255,255,.15)}
+.nav-btn.cta{background:var(--accent);color:var(--bg);border-color:var(--accent);font-weight:600}
+.nav-btn.cta:hover{background:var(--accent-light)}
+
+/* HERO */
+.hero{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:5rem 2rem 4rem;
+}
+.hero-badge{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:20px;border:1px solid rgba(232,160,32,.3);background:rgba(232,160,32,.08);font-size:11px;font-family:var(--mono);color:var(--accent);margin-bottom:2rem}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--ok);animation:pulse 2s ease infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.3)}}
+.hero h1{font-size:clamp(2rem,5vw,3.5rem);font-weight:800;line-height:1.1;letter-spacing:-1.5px;max-width:700px}
+.hero h1 span{color:var(--accent)}
+.hero p{color:var(--text-muted);font-size:1rem;max-width:520px;line-height:1.8;margin:1.2rem 0 2.5rem}
+.hero-cta{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+.btn-primary{padding:13px 28px;background:var(--accent);color:var(--bg);border:none;border-radius:10px;font-family:var(--sans);font-size:.95rem;font-weight:700;cursor:pointer;text-decoration:none;transition:all .2s;display:inline-flex;align-items:center;gap:8px}
+.btn-primary:hover{background:var(--accent-light);transform:translateY(-2px);box-shadow:0 12px 30px rgba(232,160,32,.3)}
+.btn-outline{padding:13px 28px;background:transparent;color:var(--text);border:1px solid var(--border);border-radius:10px;font-family:var(--sans);font-size:.95rem;cursor:pointer;text-decoration:none;transition:all .2s;display:inline-flex;align-items:center;gap:8px}
+.btn-outline:hover{background:var(--glass);border-color:rgba(255,255,255,.2);transform:translateY(-2px)}
+
+/* STATS */
+.stats{display:flex;gap:1px;background:var(--border);border:1px solid var(--border);border-radius:16px;overflow:hidden;margin:3rem 0 0;width:min(680px,100%)}
+.stat{flex:1;padding:1.5rem;background:var(--surface);text-align:center}
+.stat-val{font-size:1.8rem;font-weight:800;font-family:var(--mono);color:var(--accent)}
+.stat-lbl{font-size:.75rem;color:var(--text-muted);margin-top:4px;letter-spacing:.5px}
+
+/* FEATURES */
+.features{padding:4rem 2rem;max-width:1100px;margin:0 auto;width:100%}
+.section-label{font-size:11px;font-family:var(--mono);color:var(--accent);letter-spacing:2px;text-transform:uppercase;margin-bottom:1rem}
+.section-title{font-size:1.8rem;font-weight:700;margin-bottom:3rem}
+.feature-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem}
+.feature-card{
+  padding:1.5rem;background:var(--surface);border:1px solid var(--border);
+  border-radius:14px;transition:all .25s;
+}
+.feature-card:hover{border-color:rgba(232,160,32,.3);transform:translateY(-3px);box-shadow:0 20px 40px rgba(0,0,0,.3)}
+.fc-icon{font-size:1.8rem;margin-bottom:1rem}
+.fc-title{font-size:.95rem;font-weight:700;margin-bottom:.5rem}
+.fc-desc{font-size:.82rem;color:var(--text-muted);line-height:1.6}
+
+/* FOOTER */
+footer{border-top:1px solid var(--border);padding:1.5rem 2rem;text-align:center;font-size:.75rem;color:var(--text-muted);font-family:var(--mono)}
+
+@media(max-width:640px){
+  nav{padding:0 1rem}
+  .nav-links{gap:4px}
+  .nav-btn{padding:6px 12px;font-size:.75rem}
+  .stats{flex-direction:column;gap:0}
+}
+</style>
+</head>
+<body>
+<div class="bg-grid"></div>
+<div class="glow-orb g1"></div>
+<div class="glow-orb g2"></div>
+
+<div class="page">
+  <nav>
+    <div class="nav-logo">
+      <div class="logo-icon">S</div>
+      <div>
+        <div class="logo-name">SIMARSIP</div>
+        <div class="logo-ver">v2.0 · 2026</div>
+      </div>
+    </div>
+    <div class="nav-links">
+      <a class="nav-btn active" href="index.html">Beranda</a>
+      <a class="nav-btn" href="user.html">Input Surat</a>
+      <a class="nav-btn cta" href="admin-login.html">Admin</a>
+    </div>
+  </nav>
+
+  <div class="hero">
+    <div class="hero-badge"><div class="dot"></div>Sistem Aktif — 2026</div>
+    <h1>Sistem Manajemen<br><span>Arsip & Surat</span></h1>
+    <p>SIMARSIP membantu penomoran surat secara otomatis, terstruktur, dan terintegrasi dengan Google Sheets. Cepat, akurat, dan mudah dikelola.</p>
+    <div class="hero-cta">
+      <a class="btn-primary" href="user.html">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+        Buat Nomor Surat
+      </a>
+      <a class="btn-outline" href="admin-login.html">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Masuk Admin
+      </a>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="stat-val" id="sTotalSurat">—</div><div class="stat-lbl">Total Surat</div></div>
+      <div class="stat"><div class="stat-val" id="sJenisArsip">—</div><div class="stat-lbl">Jenis Arsip</div></div>
+      <div class="stat"><div class="stat-val" id="sKlasifikasi">—</div><div class="stat-lbl">Klasifikasi</div></div>
+    </div>
+  </div>
+
+  <div class="features">
+    <div class="section-label">// Fitur Utama</div>
+    <div class="section-title">Semua yang Anda butuhkan</div>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="fc-icon">📋</div>
+        <div class="fc-title">Penomoran Otomatis</div>
+        <div class="fc-desc">Nomor surat dibuat otomatis berdasarkan jenis arsip, klasifikasi, kode wilayah, dan nomor urut yang terus terupdate.</div>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon">🗂️</div>
+        <div class="fc-title">Klasifikasi Terstruktur</div>
+        <div class="fc-desc">Pilih jenis arsip dan klasifikasi dari dropdown yang dikelola admin. Contoh: PR 1 → UM → 01.01.</div>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon">⚙️</div>
+        <div class="fc-title">Konfigurasi Fleksibel</div>
+        <div class="fc-desc">Admin dapat mengubah kode wilayah, menambah jenis arsip baru, dan mengatur klasifikasi kapan saja.</div>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon">📊</div>
+        <div class="fc-title">Data Google Sheets</div>
+        <div class="fc-desc">Semua data tersimpan rapi di Google Sheets. Mudah dibackup, diekspor, dan dimonitor langsung dari spreadsheet.</div>
+      </div>
+    </div>
+  </div>
+
+  <footer>SIMARSIP &copy; 2026 — Powered by Google Apps Script</footer>
+</div>
+
+<script>
+const GAS_DEF = 'https://script.google.com/macros/s/AKfycbz7W34A80P0LNl0D2qZuMYd9tXYbiuT5u3uq9baDL0-4qK6QOL5gko-Kyyhuij_svZ3/exec';
+const gasUrl = () => localStorage.getItem('GAS_URL') || GAS_DEF;
+
+async function loadStats() {
+  try {
+    const [ja, kl] = await Promise.all([
+      fetch(gasUrl(),{method:'POST',body:JSON.stringify({action:'getJenisArsip'})}).then(r=>r.json()),
+      fetch(gasUrl(),{method:'POST',body:JSON.stringify({action:'getKlasifikasi'})}).then(r=>r.json()),
+    ]);
+    if (ja.success) document.getElementById('sJenisArsip').textContent = ja.data.length;
+    if (kl.success) document.getElementById('sKlasifikasi').textContent = kl.data.length;
+    document.getElementById('sTotalSurat').textContent = '—';
+  } catch(e) {}
+}
+loadStats();
+
+const lf = document.createElement('link');
+lf.rel='stylesheet';
+lf.href='https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap';
+document.head.appendChild(lf);
+</script>
+</body>
+</html>
