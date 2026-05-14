@@ -478,41 +478,25 @@ tr:hover td{background:var(--glass)}
 
 <!-- ══ MODAL: ADD SHEET ══════════════════════════════════════ -->
 <div class="modal-bg" id="modalAddSheet">
-  <div class="modal" style="max-width:400px">
-    <div class="modal-title">Tambah Sheet Data Surat</div>
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title">Tambah Spreadsheet Data Surat</div>
+    <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:1.2rem;line-height:1.6">Spreadsheet baru akan dibuat terpisah dari spreadsheet master. Data surat tersimpan aman dan rahasia.</p>
     <div class="mform-group">
-      <label class="mform-label">Nama / Tahun Sheet</label>
-      <input class="form-input" id="mSheetName" placeholder="Contoh: 2027" oninput="updateSheetPreview()">
-      <div style="font-size:.7rem;color:var(--text-muted);margin-top:5px;font-family:var(--mono)" id="sheetNamePreview">Sheet: Data_Surat_...</div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-cancel" onclick="closeModal('modalAddSheet')">Batal</button>
-      <button class="btn-ok" onclick="doAddSheet()">Buat Sheet</button>
-    </div>
-  </div>
-</div>
-
-<!-- ══ MODAL: ADD SHEET ════════════════════════════════════ -->
-<div class="modal-bg" id="modalAddSheet">
-  <div class="modal" style="max-width:400px">
-    <div class="modal-title">Tambah Sheet Data Surat</div>
-    <div class="mform-group">
-      <label class="mform-label">Nama / Tahun Sheet</label>
+      <label class="mform-label">Nama / Tahun</label>
       <input class="form-input" id="mSheetName" placeholder="Contoh: 2027" oninput="updateSheetPreview()">
       <div style="font-size:.7rem;color:var(--text-muted);margin-top:6px;font-family:var(--mono)" id="sheetNamePreview">Spreadsheet: SIMARSIP Data Surat - ...</div>
     </div>
     <div class="modal-footer">
       <button class="btn-cancel" onclick="closeModal('modalAddSheet')">Batal</button>
-      <button class="btn-ok" onclick="doAddSheet()">Buat Sheet</button>
+      <button class="btn-ok" id="btnDoAddSheet" onclick="doAddSheet()">Buat Spreadsheet</button>
     </div>
   </div>
 </div>
-
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
 <script>
-const GAS_DEF = 'https://script.google.com/macros/s/AKfycbxdP7oPtPLUg2odjWEwz_JlCV2PQl5yuRWOfWxLYeTPSrB8fh8eSh_hp5Dcb2g1dJBH/exec';
+const GAS_DEF = 'https://script.google.com/macros/s/AKfycbz7W34A80P0LNl0D2qZuMYd9tXYbiuT5u3uq9baDL0-4qK6QOL5gko-Kyyhuij_svZ3/exec';
 const gasUrl = () => localStorage.getItem('GAS_URL') || GAS_DEF;
 
 // ── Auth guard ─────────────────────────────────────────────────
@@ -540,7 +524,8 @@ let jaList = [], klList = [], suratList = [], userList = [], wilData = {}, sheet
 
 // ── INIT ───────────────────────────────────────────────────────
 async function init() {
-  await Promise.all([loadWilayah(), loadJenis(), loadKlasifikasi(), loadSurat(), loadUsers(), loadSheets()]);
+  await Promise.all([loadWilayah(), loadJenis(), loadKlasifikasi(), loadSurat(), loadUsers()]);
+  loadSheets(); // non-blocking, panel-nya terpisah
   renderDashboard();
 }
 
@@ -927,6 +912,116 @@ function renderDashboard() {
       <td style="font-size:.78rem">${esc(s.alamat||'')}</td>
       <td style="font-size:.73rem;font-family:var(--mono);color:var(--text-muted)">${esc(String(s.tglSurat||''))}</td>
     </tr>`).join('');
+}
+
+
+// ══ SHEET (SPREADSHEET) MANAGEMENT ══════════════════════════
+async function loadSheets() {
+  try {
+    const r = await gas({action:'getSheetList'});
+    if (r.success) {
+      sheetList = r.data;
+      renderSheetsTable();
+      const lbl = document.getElementById('aktifSheetLabel');
+      if (lbl) lbl.textContent = r.aktifNama || (r.data.find(s=>s.aktif)||{}).nama || '—';
+    } else {
+      document.getElementById('sheetsTbl').innerHTML =
+        '<tr class="empty-row"><td colspan="4">' + (r.message||'Gagal memuat') + '</td></tr>';
+    }
+  } catch(e) {
+    document.getElementById('sheetsTbl').innerHTML =
+      '<tr class="empty-row"><td colspan="4">Error: ' + e.message + '</td></tr>';
+  }
+}
+
+function renderSheetsTable() {
+  const tb = document.getElementById('sheetsTbl');
+  if (!sheetList || !sheetList.length) {
+    tb.innerHTML = '<tr class="empty-row"><td colspan="4">Belum ada spreadsheet data terdaftar. Klik &ldquo;+ Tambah Sheet Baru&rdquo; untuk membuat.</td></tr>';
+    return;
+  }
+  tb.innerHTML = sheetList.map(s => {
+    const rowsTxt = s.rows < 0
+      ? '<span style="color:var(--err)">Tidak terbaca</span>'
+      : s.rows + ' surat';
+    const namaCol = '<span style="font-family:var(--mono);font-weight:700;color:' +
+      (s.aktif ? 'var(--ok)' : 'var(--text)') + '">' + esc(s.nama) + '</span>' +
+      (s.aktif ? ' <span style="font-size:.62rem;background:rgba(45,212,160,.12);color:var(--ok);' +
+      'border:1px solid rgba(45,212,160,.2);padding:2px 7px;border-radius:10px;' +
+      'font-family:var(--mono);margin-left:6px">AKTIF</span>' : '');
+    const aksiCol = (!s.aktif
+      ? '<button class="btn-sm primary" onclick='activateSheet("' + s.id + '","' + esc(s.nama) + '")'>Aktifkan</button> '
+      : '<span style="font-size:.72rem;color:var(--ok)">&#x2713; Aktif</span> ') +
+      '<button class="btn-sm danger" onclick='deleteSheet("' + s.id + '","' + esc(s.nama) + '")'>Hapus dari daftar</button>';
+    return '<tr>' +
+      '<td>' + namaCol + '</td>' +
+      '<td style="font-family:var(--mono);color:var(--text-muted)">' + rowsTxt + '</td>' +
+      '<td><span class="badge-aktif ' + (s.aktif?'ya':'tidak') + '">' + (s.aktif?'Aktif':'Tidak Aktif') + '</span></td>' +
+      '<td><div class="td-actions">' + aksiCol + '</div></td>' +
+      '</tr>';
+  }).join('');
+}
+
+function openAddSheetModal() {
+  const nextYr = new Date().getFullYear() + 1;
+  document.getElementById('mSheetName').value = String(nextYr);
+  updateSheetPreview();
+  openModal('modalAddSheet');
+  setTimeout(()=>{ const el=document.getElementById('mSheetName'); if(el){el.focus();el.select();} }, 150);
+}
+
+function updateSheetPreview() {
+  const val = (document.getElementById('mSheetName').value||'').trim();
+  const prev = document.getElementById('sheetNamePreview');
+  if (prev) prev.textContent = val
+    ? 'Spreadsheet: SIMARSIP Data Surat - ' + val
+    : 'Spreadsheet: SIMARSIP Data Surat - ...';
+}
+
+async function doAddSheet() {
+  const val = (document.getElementById('mSheetName').value||'').trim();
+  if (!val) { toast('Masukkan nama atau tahun sheet', 'err'); return; }
+  const btn = document.getElementById('btnDoAddSheet');
+  if (btn) { btn.disabled=true; btn.textContent='Membuat...'; }
+  try {
+    const r = await gas({action:'addDataSheet', sheetName: val});
+    if (r.success) {
+      closeModal('modalAddSheet');
+      await loadSheets();
+      toast('Spreadsheet "' + r.nama + '" berhasil dibuat dan diaktifkan');
+    } else {
+      toast(r.message || 'Gagal membuat spreadsheet', 'err');
+    }
+  } catch(e) {
+    toast('Error: ' + e.message, 'err');
+  } finally {
+    if (btn) { btn.disabled=false; btn.textContent='Buat Spreadsheet'; }
+  }
+}
+
+async function activateSheet(id, nama) {
+  const r = await gas({action:'setActiveSheet', id});
+  if (r.success) {
+    await loadSheets();
+    const lbl = document.getElementById('aktifSheetLabel');
+    if (lbl) lbl.textContent = nama;
+    toast('Spreadsheet "' + nama + '" diaktifkan');
+  } else toast(r.message || 'Gagal mengaktifkan', 'err');
+}
+
+function deleteSheet(id, nama) {
+  confirmAction(
+    'Hapus "' + nama + '" dari daftar?
+
+File Google Drive TIDAK dihapus — data tetap aman dan bisa diakses langsung dari Drive.',
+    async () => {
+      const r = await gas({action:'deleteDataSheet', id});
+      if (r.success) {
+        await loadSheets();
+        toast('Dihapus dari daftar. File Drive tetap aman.');
+      } else toast(r.message || 'Gagal', 'err');
+    }
+  );
 }
 
 // ── Utils ──────────────────────────────────────────────────────
