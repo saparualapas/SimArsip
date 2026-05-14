@@ -499,7 +499,7 @@ tr:hover td{background:var(--glass)}
     <div class="mform-group">
       <label class="mform-label">Nama / Tahun Sheet</label>
       <input class="form-input" id="mSheetName" placeholder="Contoh: 2027" oninput="updateSheetPreview()">
-      <div style="font-size:.7rem;color:var(--text-muted);margin-top:6px;font-family:var(--mono)" id="sheetNamePreview">Sheet: Data_Surat_...</div>
+      <div style="font-size:.7rem;color:var(--text-muted);margin-top:6px;font-family:var(--mono)" id="sheetNamePreview">Spreadsheet: SIMARSIP Data Surat - ...</div>
     </div>
     <div class="modal-footer">
       <button class="btn-cancel" onclick="closeModal('modalAddSheet')">Batal</button>
@@ -512,7 +512,7 @@ tr:hover td{background:var(--glass)}
 <div class="toast" id="toast"></div>
 
 <script>
-const GAS_DEF = 'https://script.google.com/macros/s/AKfycbxWNrh5X5My3c6GYiP6YwKAE9t2fFMxXLsajIFU0CDVcrTAVWTgILl9aH8bkCvjzuuz/exec';
+const GAS_DEF = 'https://script.google.com/macros/s/AKfycbxdP7oPtPLUg2odjWEwz_JlCV2PQl5yuRWOfWxLYeTPSrB8fh8eSh_hp5Dcb2g1dJBH/exec';
 const gasUrl = () => localStorage.getItem('GAS_URL') || GAS_DEF;
 
 // ── Auth guard ─────────────────────────────────────────────────
