@@ -19,12 +19,94 @@
 
 const SS = SpreadsheetApp.getActiveSpreadsheet();
 
-// ── Sheet Data_Surat tahun ini ────────────────────────────────
+// ── Sheet Data_Surat aktif (dari Config) ─────────────────────
 function getSuratSheetName() {
+  // Cek config aktifSheet
+  let sh = SS.getSheetByName('Config');
+  if (sh) {
+    const rows = sh.getDataRange().getValues();
+    const row  = rows.find(r => String(r[0]).trim() === 'aktifSheet');
+    if (row && row[1]) {
+      const name = String(row[1]).trim();
+      if (SS.getSheetByName(name)) return name;
+    }
+  }
+  // Fallback: cari Data_Surat_tahunIni atau Data_Surat
   const yr = new Date().getFullYear();
   if (SS.getSheetByName('Data_Surat_' + yr)) return 'Data_Surat_' + yr;
   if (SS.getSheetByName('Data_Surat'))       return 'Data_Surat';
   return 'Data_Surat_' + yr;
+}
+
+// ── Manajemen Sheet Data Surat ────────────────────────────────
+function getSheetList({user}) {
+  if (!isAdmin(user)) return noAuth();
+  const aktif = getSuratSheetName();
+  const sheets = SS.getSheets()
+    .filter(sh => sh.getName().startsWith('Data_Surat'))
+    .map(sh => ({
+      name:   sh.getName(),
+      rows:   Math.max(0, sh.getLastRow() - 1), // jumlah data (minus header)
+      aktif:  sh.getName() === aktif,
+    }));
+  return {success:true, data: sheets, aktif};
+}
+
+function addDataSheet({user, sheetName}) {
+  if (!isAdmin(user)) return noAuth();
+  if (!sheetName) return {success:false, message:'Nama sheet wajib diisi.'};
+  // Pastikan format: Data_Surat_YYYY atau Data_Surat_custom
+  const safeName = sheetName.startsWith('Data_Surat') ? sheetName : 'Data_Surat_' + sheetName;
+  if (SS.getSheetByName(safeName)) return {success:false, message:'Sheet "'+safeName+'" sudah ada.'};
+  const sh = SS.insertSheet(safeName);
+  sh.appendRow(['No','No_Surat','Alamat_Penerima','Tanggal_Surat','Perihal']);
+  sh.setColumnWidth(1, 50);
+  sh.setColumnWidth(2, 220);
+  sh.setColumnWidth(3, 300);
+  sh.setColumnWidth(4, 120);
+  sh.setColumnWidth(5, 250);
+  sh.getRange(1,1,1,5).setFontWeight('bold').setBackground('#1a3a5c').setFontColor('#ffffff');
+  // Aktifkan otomatis sheet baru
+  _setAktifSheet(safeName);
+  return {success:true, name: safeName};
+}
+
+function setActiveSheet({user, sheetName}) {
+  if (!isAdmin(user)) return noAuth();
+  if (!SS.getSheetByName(sheetName)) return {success:false, message:'Sheet tidak ditemukan.'};
+  _setAktifSheet(sheetName);
+  return {success:true};
+}
+
+function deleteDataSheet({user, sheetName}) {
+  if (!isAdmin(user)) return noAuth();
+  if (!sheetName.startsWith('Data_Surat')) return {success:false, message:'Hanya sheet Data_Surat yang boleh dihapus.'};
+  const sh = SS.getSheetByName(sheetName);
+  if (!sh) return {success:false, message:'Sheet tidak ditemukan.'};
+  // Jangan hapus jika cuma satu sheet Data_Surat
+  const allDataSheets = SS.getSheets().filter(s => s.getName().startsWith('Data_Surat'));
+  if (allDataSheets.length <= 1) return {success:false, message:'Minimal harus ada 1 sheet data surat.'};
+  // Jika sheet ini aktif, pindahkan ke sheet lain dulu
+  if (getSuratSheetName() === sheetName) {
+    const other = allDataSheets.find(s => s.getName() !== sheetName);
+    if (other) _setAktifSheet(other.getName());
+  }
+  SS.deleteSheet(sh);
+  return {success:true};
+}
+
+function _setAktifSheet(name) {
+  const sh = getSheet('Config');
+  const rows = sh.getDataRange().getValues();
+  let found = false;
+  rows.forEach((r, i) => {
+    if (i === 0) return;
+    if (String(r[0]).trim() === 'aktifSheet') {
+      sh.getRange(i+1, 2).setValue(name);
+      found = true;
+    }
+  });
+  if (!found) sh.appendRow(['aktifSheet', name]);
 }
 
 // ── Sheet getter + auto-create ───────────────────────────────
@@ -88,6 +170,10 @@ function doPost(e) {
       case 'addUser':           result = addUser(body); break;
       case 'editUser':          result = editUser(body); break;
       case 'deleteUser':        result = deleteUser(body); break;
+      case 'getSheetList':    result = getSheetList(body); break;
+      case 'addDataSheet':    result = addDataSheet(body); break;
+      case 'setActiveSheet':  result = setActiveSheet(body); break;
+      case 'deleteDataSheet': result = deleteDataSheet(body); break;
       default: result = {success:false, message:'Action tidak dikenali: '+body.action};
     }
     return ContentService.createTextOutput(JSON.stringify(result))

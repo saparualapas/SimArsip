@@ -201,6 +201,11 @@ tr:hover td{background:var(--glass)}
       <span class="sb-icon">👥</span>Pengguna
     </div>
 
+    <div class="sb-section">Konfigurasi</div>
+    <div class="sb-item" onclick="showPanel('sheets')" data-panel="sheets">
+      <span class="sb-icon">📅</span>Sheet Data Surat
+    </div>
+
     <div class="sb-footer">
       <div class="sb-user">
         <div class="sb-avatar" id="sbAvatar">A</div>
@@ -335,6 +340,36 @@ tr:hover td{background:var(--glass)}
         </div>
       </div>
 
+
+      <!-- ══ SHEET DATA SURAT ══════════════════════════════════ -->
+      <div class="panel" id="panel-sheets">
+        <div class="sec-head">
+          <div class="sec-title">Sheet Data Surat</div>
+          <button class="btn-add" onclick="openAddSheetModal()">+ Tambah Sheet Baru</button>
+        </div>
+
+        <!-- Info aktif -->
+        <div style="background:rgba(45,212,160,.07);border:1px solid rgba(45,212,160,.2);border-radius:10px;padding:1rem 1.2rem;margin-bottom:1.2rem;font-size:.83rem;display:flex;align-items:center;gap:10px">
+          <span style="font-size:1.2rem">📌</span>
+          <span>Sheet aktif saat ini: <b id="aktifSheetLabel" style="font-family:var(--mono);color:var(--ok)">—</b>
+          <span style="color:var(--text-muted);margin-left:8px;font-size:.75rem">// surat baru akan masuk ke sheet ini</span></span>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Nama Sheet</th><th>Jumlah Data</th><th>Status</th><th>Aksi</th></tr></thead>
+            <tbody id="sheetsTbl"><tr class="empty-row"><td colspan="4">Memuat...</td></tr></tbody>
+          </table>
+        </div>
+
+        <div style="margin-top:1rem;padding:.9rem 1.2rem;background:var(--glass);border-radius:8px;font-size:.78rem;color:var(--text-muted);line-height:1.8">
+          <b style="color:var(--text)">Cara penggunaan:</b><br>
+          • Klik <b style="color:var(--accent)">Aktifkan</b> untuk memilih sheet tujuan surat baru<br>
+          • Klik <b style="color:var(--accent)">+ Tambah Sheet Baru</b> untuk membuat sheet tahun baru (contoh: 2027)<br>
+          • Sheet lama tetap tersimpan dan bisa dilihat di Data Surat dengan filter sheet
+        </div>
+      </div>
+
     </div><!-- /content -->
   </div><!-- /main-wrap -->
 </div><!-- /app -->
@@ -441,11 +476,43 @@ tr:hover td{background:var(--glass)}
   </div>
 </div>
 
+<!-- ══ MODAL: ADD SHEET ══════════════════════════════════════ -->
+<div class="modal-bg" id="modalAddSheet">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-title">Tambah Sheet Data Surat</div>
+    <div class="mform-group">
+      <label class="mform-label">Nama / Tahun Sheet</label>
+      <input class="form-input" id="mSheetName" placeholder="Contoh: 2027" oninput="updateSheetPreview()">
+      <div style="font-size:.7rem;color:var(--text-muted);margin-top:5px;font-family:var(--mono)" id="sheetNamePreview">Sheet: Data_Surat_...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('modalAddSheet')">Batal</button>
+      <button class="btn-ok" onclick="doAddSheet()">Buat Sheet</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: ADD SHEET ════════════════════════════════════ -->
+<div class="modal-bg" id="modalAddSheet">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-title">Tambah Sheet Data Surat</div>
+    <div class="mform-group">
+      <label class="mform-label">Nama / Tahun Sheet</label>
+      <input class="form-input" id="mSheetName" placeholder="Contoh: 2027" oninput="updateSheetPreview()">
+      <div style="font-size:.7rem;color:var(--text-muted);margin-top:6px;font-family:var(--mono)" id="sheetNamePreview">Sheet: Data_Surat_...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('modalAddSheet')">Batal</button>
+      <button class="btn-ok" onclick="doAddSheet()">Buat Sheet</button>
+    </div>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
 <script>
-const GAS_DEF = 'https://script.google.com/macros/s/AKfycbzO2LZTcF_73BsvVWWjtWcqxU9aLC1SEk1tXo1dZyep65WoVtQ6NuHrIp5yRGYlHSe8/exec';
+const GAS_DEF = 'https://script.google.com/macros/s/AKfycbz7W34A80P0LNl0D2qZuMYd9tXYbiuT5u3uq9baDL0-4qK6QOL5gko-Kyyhuij_svZ3/exec';
 const gasUrl = () => localStorage.getItem('GAS_URL') || GAS_DEF;
 
 // ── Auth guard ─────────────────────────────────────────────────
@@ -469,11 +536,11 @@ async function gas(body) {
 }
 
 // ── CACHE ──────────────────────────────────────────────────────
-let jaList = [], klList = [], suratList = [], userList = [], wilData = {};
+let jaList = [], klList = [], suratList = [], userList = [], wilData = {}, sheetList = [];
 
 // ── INIT ───────────────────────────────────────────────────────
 async function init() {
-  await Promise.all([loadWilayah(), loadJenis(), loadKlasifikasi(), loadSurat(), loadUsers()]);
+  await Promise.all([loadWilayah(), loadJenis(), loadKlasifikasi(), loadSurat(), loadUsers(), loadSheets()]);
   renderDashboard();
 }
 
@@ -485,6 +552,7 @@ const panelMeta = {
   klasifikasi:  {title:'Klasifikasi',            sub:'// Kelola kode klasifikasi arsip'},
   surat:        {title:'Data Surat',             sub:'// Monitor dan kelola nomor surat'},
   users:        {title:'Manajemen Pengguna',     sub:'// Kelola akun pengguna sistem'},
+  sheets:       {title:'Sheet Data Surat',         sub:'// Kelola sheet penyimpanan data surat per tahun'},
 };
 
 function showPanel(name) {
